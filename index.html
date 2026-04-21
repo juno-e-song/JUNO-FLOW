@@ -478,14 +478,14 @@
           <h1 class="juno-heading">JUNO FLOW RANK CONSOLE</h1>
           <p class="juno-body">
             JUNO FLOW에서 살아남은 여정의 기록을 남겨보세요.<br />
-            닉네임을 입력하고, 클리어한 스테이지와 점수를 콘솔에 적어두면,
+            닉네임을 등록하고 최종 점수만 콘솔에 적으면,
             당신만의 랭킹 보드가 만들어집니다.
           </p>
 
           <ul class="juno-list">
             <li>접속 시 닉네임을 한 번 설정하면 계속 사용됩니다.</li>
             <li>모바일에서도 보기 좋게 정렬된 콘솔 스타일 UI입니다.</li>
-            <li>브라우저에 기록되므로, 같은 기기에서는 닉네임이 유지됩니다.</li>
+            <li>브라우저에 닉네임이 저장되고, 점수는 서버 랭킹으로 집계됩니다.</li>
           </ul>
         </div>
 
@@ -521,7 +521,12 @@
                 <p class="juno-console__hint">※ 나중에 브라우저 저장소를 지우면 다시 설정할 수 있습니다.</p>
               </section>
 
-              <section class="juno-console__section" id="rank-section" aria-label="랭킹 기록 및 목록" style="display:none">
+              <section
+                class="juno-console__section"
+                id="rank-section"
+                aria-label="랭킹 기록 및 목록"
+                style="display: none"
+              >
                 <div class="juno-console__status">
                   <p class="juno-console__line">
                     <span class="juno-console__prompt">&gt;&gt;</span>
@@ -542,7 +547,7 @@
                   </div>
                   <div class="juno-form__fields">
                     <label class="juno-label juno-label--inline">
-                      점수
+                      최종 점수
                       <input
                         class="juno-input juno-input--inline"
                         placeholder="예: 1200"
@@ -551,17 +556,11 @@
                         required
                       />
                     </label>
-                    <label class="juno-label juno-label--inline">
-                      스테이지
-                      <input
-                        class="juno-input juno-input--inline"
-                        placeholder="선택 사항"
-                        inputmode="numeric"
-                        id="stage-input"
-                      />
-                    </label>
                     <button class="juno-button juno-button--small" type="submit">기록 남기기</button>
                   </div>
+                  <p class="juno-console__hint">
+                    ※ 게임에서 자동 전송이 안 될 때만 수동으로 입력해 주세요.
+                  </p>
                 </form>
 
                 <div class="juno-console__divider" aria-hidden="true"></div>
@@ -577,14 +576,13 @@
                     아직 기록이 없습니다. 첫 번째 기록을 남겨보세요.
                   </p>
 
-                  <div class="juno-ranking__table-wrapper" id="table-wrapper" style="display:none">
+                  <div class="juno-ranking__table-wrapper" id="table-wrapper" style="display: none">
                     <table class="juno-ranking__table">
                       <thead>
                         <tr>
                           <th scope="col">#</th>
                           <th scope="col">PLAYER</th>
                           <th scope="col">SCORE</th>
-                          <th scope="col">STAGE</th>
                           <th scope="col">TIME</th>
                         </tr>
                       </thead>
@@ -600,46 +598,52 @@
     </main>
 
     <script>
-      (function () {
-        const STORAGE_USER_KEY = 'junoFlowUsername';
-        const nameSection = document.getElementById('name-section');
-        const rankSection = document.getElementById('rank-section');
-        const nameForm = document.getElementById('name-form');
-        const nameInput = document.getElementById('name-input');
-        const playerNameLabel = document.getElementById('player-name-label');
-        const scoreForm = document.getElementById('score-form');
-        const scoreInput = document.getElementById('score-input');
-        const stageInput = document.getElementById('stage-input');
-        const rankingBody = document.getElementById('ranking-body');
-        const emptyMessage = document.getElementById('empty-message');
-        const tableWrapper = document.getElementById('table-wrapper');
+      ;(function () {
+        const STORAGE_USER_KEY = 'junoFlowUsername'
+        const API_BASE = '' // Next.js 랭킹 서버 도메인이 다르면 예: 'https://your-app.vercel.app'
 
-        let currentPlayer = '';
+        const nameSection = document.getElementById('name-section')
+        const rankSection = document.getElementById('rank-section')
+        const nameForm = document.getElementById('name-form')
+        const nameInput = document.getElementById('name-input')
+        const playerNameLabel = document.getElementById('player-name-label')
+        const scoreForm = document.getElementById('score-form')
+        const scoreInput = document.getElementById('score-input')
+        const rankingBody = document.getElementById('ranking-body')
+        const emptyMessage = document.getElementById('empty-message')
+        const tableWrapper = document.getElementById('table-wrapper')
+
+        let currentPlayer = ''
+
+        function apiUrl(path) {
+          if (!API_BASE) return path
+          return API_BASE.replace(/\/$/, '') + path
+        }
 
         function formatTime(iso) {
-          if (!iso) return '-';
-          const d = new Date(iso);
-          if (Number.isNaN(d.getTime())) return '-';
-          const mm = String(d.getMonth() + 1).padStart(2, '0');
-          const dd = String(d.getDate()).padStart(2, '0');
-          const hh = String(d.getHours()).padStart(2, '0');
-          const mi = String(d.getMinutes()).padStart(2, '0');
-          return mm + '/' + dd + ' ' + hh + ':' + mi;
+          if (!iso) return '-'
+          const d = new Date(iso)
+          if (Number.isNaN(d.getTime())) return '-'
+          const mm = String(d.getMonth() + 1).padStart(2, '0')
+          const dd = String(d.getDate()).padStart(2, '0')
+          const hh = String(d.getHours()).padStart(2, '0')
+          const mi = String(d.getMinutes()).padStart(2, '0')
+          return mm + '/' + dd + ' ' + hh + ':' + mi
         }
 
         function renderRecords(records) {
-          rankingBody.innerHTML = '';
+          rankingBody.innerHTML = ''
           if (!records || records.length === 0) {
-            emptyMessage.style.display = 'block';
-            tableWrapper.style.display = 'none';
-            return;
+            emptyMessage.style.display = 'block'
+            tableWrapper.style.display = 'none'
+            return
           }
-          emptyMessage.style.display = 'none';
-          tableWrapper.style.display = 'block';
+          emptyMessage.style.display = 'none'
+          tableWrapper.style.display = 'block'
 
           records.forEach(function (record, index) {
-            const tr = document.createElement('tr');
-            const timeLabel = formatTime(record.createdAt);
+            const tr = document.createElement('tr')
+            const timeLabel = formatTime(record.createdAt)
 
             tr.innerHTML =
               '<td>' +
@@ -652,96 +656,120 @@
               record.score +
               '</td>' +
               '<td>' +
-              (record.stage != null ? record.stage : '-') +
-              '</td>' +
-              '<td>' +
               timeLabel +
-              '</td>';
+              '</td>'
 
-            rankingBody.appendChild(tr);
-          });
+            rankingBody.appendChild(tr)
+          })
         }
 
         function fetchRecords() {
-          fetch('/api/rank')
+          fetch(apiUrl('/api/rank'))
             .then(function (res) {
-              if (!res.ok) return null;
-              return res.json();
+              if (!res.ok) return null
+              return res.json()
             })
             .then(function (data) {
-              if (!data) return;
-              renderRecords(data);
+              if (!data) return
+              renderRecords(data)
             })
             .catch(function () {
               // 네트워크 오류 시 조용히 무시
-            });
+            })
+        }
+
+        function setPlayerName(name) {
+          currentPlayer = name
+          playerNameLabel.textContent = name
+          try {
+            window.localStorage.setItem(STORAGE_USER_KEY, name)
+          } catch (e) {}
         }
 
         function showRankSection(name) {
-          currentPlayer = name;
-          playerNameLabel.textContent = name;
-          nameSection.style.display = 'none';
-          rankSection.style.display = 'flex';
-          fetchRecords();
+          setPlayerName(name)
+          nameSection.style.display = 'none'
+          rankSection.style.display = 'flex'
+          fetchRecords()
         }
 
-        // 초기 로드: 닉네임 복원
-        (function init() {
+        function ensurePlayerName() {
+          if (currentPlayer && currentPlayer.trim()) return currentPlayer
+
           try {
-            const savedName = window.localStorage.getItem(STORAGE_USER_KEY);
-            if (savedName) {
-              nameInput.value = savedName;
-              showRankSection(savedName);
+            const saved = window.localStorage.getItem(STORAGE_USER_KEY)
+            if (saved && saved.trim()) {
+              setPlayerName(saved.trim())
+              return currentPlayer
             }
-          } catch (e) {
-            // localStorage 접근 실패 시 무시
-          }
-        })();
+          } catch (e) {}
 
-        nameForm.addEventListener('submit', function (e) {
-          e.preventDefault();
-          const trimmed = (nameInput.value || '').trim();
-          if (!trimmed) return;
-          try {
-            window.localStorage.setItem(STORAGE_USER_KEY, trimmed);
-          } catch (err) {}
-          showRankSection(trimmed);
-        });
+          const fromPrompt = (window.prompt('JUNO FLOW 닉네임을 입력하세요') || '').trim()
+          if (!fromPrompt) return ''
+          setPlayerName(fromPrompt)
+          return currentPlayer
+        }
 
-        scoreForm.addEventListener('submit', function (e) {
-          e.preventDefault();
-          if (!currentPlayer) return;
+        function postScore(score) {
+          if (!Number.isFinite(score) || score <= 0) return
 
-          var score = Number(scoreInput.value);
-          var stageRaw = stageInput.value;
-          var stage = stageRaw ? Number(stageRaw) : undefined;
+          const name = ensurePlayerName()
+          if (!name) return
 
-          if (!Number.isFinite(score) || score <= 0) {
-            return;
-          }
-
-          var payload = {
-            playerName: currentPlayer,
+          const payload = {
+            playerName: name,
             score: score,
-            stage: Number.isFinite(stage || NaN) ? stage : undefined,
-          };
+          }
 
-          fetch('/api/rank', {
+          fetch(apiUrl('/api/rank'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           })
             .then(function (res) {
-              if (!res.ok) return;
-              scoreInput.value = '';
-              stageInput.value = '';
-              fetchRecords();
+              if (!res.ok) return
+              fetchRecords()
             })
             .catch(function () {
               // 네트워크 오류 시 조용히 무시
-            });
-        });
-      })();
+            })
+        }
+
+        // 외부(게임 코드)에서 사용할 글로벌 함수
+        // 예: 게임 JS에서 죽었을 때 submitJunoFlowScore(최종점수)
+        window.submitJunoFlowScore = function (finalScore) {
+          postScore(Number(finalScore))
+        }
+
+        // 초기 로드: 닉네임 복원
+        ;(function init() {
+          try {
+            const savedName = window.localStorage.getItem(STORAGE_USER_KEY)
+            if (savedName) {
+              nameInput.value = savedName
+              showRankSection(savedName.trim())
+              return
+            }
+          } catch (e) {
+            // localStorage 접근 실패 시 무시
+          }
+        })()
+
+        nameForm.addEventListener('submit', function (e) {
+          e.preventDefault()
+          const trimmed = (nameInput.value || '').trim()
+          if (!trimmed) return
+          showRankSection(trimmed)
+        })
+
+        scoreForm.addEventListener('submit', function (e) {
+          e.preventDefault()
+          var score = Number(scoreInput.value)
+          if (!Number.isFinite(score) || score <= 0) return
+          scoreInput.value = ''
+          postScore(score)
+        })
+      })()
     </script>
   </body>
 </html>
