@@ -1,1323 +1,747 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>JUNO FLOW</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #111; font-family: sans-serif; }
-  #game { display: block; width: 100vw; height: 100vh; background: #000; }
-
-  /* HUD */
-  #hud {
-    position: fixed; top: 12px; left: 12px; z-index: 2;
-    color: #fff; text-shadow: 1px 1px 3px #000;
-    font-size: 13px; letter-spacing: 1px;
-    pointer-events: none;
-  }
-  #hpBar {
-    width: 220px; height: 16px; background: #222;
-    border: 2px solid #fff; border-radius: 3px;
-    overflow: hidden; margin-top: 4px;
-  }
-  #hpFill {
-    height: 100%; width: 100%;
-    background: linear-gradient(to right, #e04a4a, #ff8a8a);
-    transition: width 0.2s;
-  }
-  #stageInfo { margin-top: 10px; color: #ffd24a; }
-  #killCount { font-size: 12px; color: #bbb; margin-top: 4px; }
-
-  /* Proximity tint */
-  #tint {
-    position: fixed; inset: 0; pointer-events: none; z-index: 1;
-    background: radial-gradient(circle at center, rgba(120,0,0,0) 0%, rgba(80,0,0,0) 100%);
-    transition: background 0.3s;
-  }
-
-  /* Upload panel */
-  #uploadPanel {
-    position: fixed; top: 12px; right: 12px; z-index: 2;
-    background: rgba(0,0,0,0.7); color: #fff;
-    padding: 10px 14px; border-radius: 6px; font-size: 12px;
-    border: 1px dashed #888;
-  }
-  #uploadPanel input { display: none; }
-  #uploadPanel label { cursor: pointer; color: #ffd24a; }
-  #uploadPanel.ok { border-color: #ffd24a; }
-
-  /* Overlay for start / game over / stage clear */
-  #overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.88);
-    display: flex; flex-direction: column;
-    justify-content: center; align-items: center;
-    color: #fff; z-index: 10; padding: 30px; text-align: center;
-  }
-  #overlay.hidden { display: none; }
-  #overlay h1 {
-    font-size: 56px; color: #ffd24a; margin-bottom: 6px;
-    letter-spacing: 6px; text-shadow: 3px 3px 0 #5a3a00;
-  }
-  #overlay .sub { color: #888; letter-spacing: 4px; margin-bottom: 24px; font-size: 13px; }
-  #overlay p { color: #bbb; margin: 6px 0; max-width: 500px; line-height: 1.7; }
-  #overlay button {
-    padding: 14px 38px; font-size: 14px; letter-spacing: 4px;
-    background: #1a1a1a; color: #ffd24a; border: 2px solid #ffd24a;
-    border-radius: 4px; cursor: pointer; margin-top: 24px;
-    transition: all 0.2s; font-family: inherit;
-  }
-  #overlay button:hover:not([disabled]) { background: #ffd24a; color: #111; }
-  #overlay button[disabled] { opacity: 0.3; cursor: not-allowed; }
-
-  kbd {
-    background: #333; border: 1px solid #555;
-    padding: 2px 6px; border-radius: 3px;
-    font-family: monospace; color: #ffd24a;
-  }
-  .controls {
-    display: grid; grid-template-columns: auto auto;
-    gap: 6px 18px; margin-top: 18px; font-size: 12px;
-    color: #999;
-  }
-  .controls .k { text-align: right; }
-  .controls .v { text-align: left; }
-
-  /* Drop area in start screen */
-  #startDrop {
-    margin-top: 14px; padding: 16px 28px;
-    border: 2px dashed #555; border-radius: 6px;
-    color: #999; font-size: 12px; cursor: pointer;
-    transition: all 0.2s;
-  }
-  #startDrop.ok, #startDrop:hover { border-color: #ffd24a; color: #ffd24a; background: rgba(255,210,74,0.04); }
-  #startDrop input { display: none; }
-  #previewWrap { margin-top: 10px; display: none; }
-  #previewWrap.show { display: block; }
-  #previewWrap img { max-width: 80px; max-height: 80px; border: 2px solid #ffd24a; border-radius: 4px; }
-
-  /* Flash overlay for damage */
-  #flash {
-    position: fixed; inset: 0; pointer-events: none; z-index: 4;
-    background: #fff; opacity: 0; transition: opacity 0.1s;
-  }
-
-  /* Name input */
-  #nameRow {
-    margin-top: 14px; display: flex; align-items: center;
-    gap: 10px; color: #bbb; font-size: 13px;
-  }
-  #nameInput {
-    background: #1a1a1a; color: #ffd24a; border: 1px solid #555;
-    border-radius: 4px; padding: 8px 12px; font-size: 14px;
-    font-family: inherit; letter-spacing: 1px; width: 200px;
-    text-align: center;
-  }
-  #nameInput:focus { outline: none; border-color: #ffd24a; }
-  #currentName { color: #ffd24a; font-weight: 700; }
-  #changeNameBtn {
-    background: none; border: none; color: #888; cursor: pointer;
-    font-size: 11px; text-decoration: underline;
-  }
-
-  /* HUD name display */
-  #hudName { color: #ffd24a; font-weight: 700; margin-bottom: 2px; }
-  #hudScore { font-size: 12px; color: #bbb; margin-top: 4px; }
-
-  /* Leaderboard */
-  #leaderboard {
-    margin-top: 18px; background: rgba(20,20,20,0.85);
-    border: 1px solid #333; border-radius: 6px;
-    padding: 14px 18px; min-width: 360px; max-width: 420px;
-  }
-  #leaderboard h3 {
-    color: #ffd24a; font-size: 13px; letter-spacing: 4px;
-    margin-bottom: 10px; text-align: center;
-  }
-  #leaderboard table {
-    width: 100%; border-collapse: collapse; font-size: 12px;
-    color: #ccc;
-  }
-  #leaderboard th {
-    color: #888; font-weight: 500; text-align: left;
-    padding: 4px 6px; border-bottom: 1px solid #333;
-    letter-spacing: 1px;
-  }
-  #leaderboard td {
-    padding: 4px 6px; border-bottom: 1px solid #222;
-  }
-  #leaderboard tr.you td { color: #ffd24a; background: rgba(255,210,74,0.05); }
-  #leaderboard tr.top1 td .rank { color: #ffd24a; font-weight: 700; }
-  #leaderboard tr.top2 td .rank { color: #d0d0d0; }
-  #leaderboard tr.top3 td .rank { color: #c09060; }
-  #leaderboard .empty { color: #555; text-align: center; padding: 16px; font-style: italic; }
-  #leaderboard .right { text-align: right; }
-
-  #rankPopup {
-    margin-top: 10px; color: #ffd24a; font-size: 14px; letter-spacing: 2px;
-  }
-</style>
-</head>
-<body>
-<canvas id="game"></canvas>
-<div id="tint"></div>
-<div id="flash"></div>
-
-<div id="hud" style="display:none">
-  <div>HP</div>
-  <div id="hpBar"><div id="hpFill"></div></div>
-  <div id="stageInfo">STAGE 1</div>
-  <div id="killCount">Kills: 0 / 5</div>
-  <div style="margin-top:10px; font-size:11px; color:#999">
-    <kbd>←</kbd> <kbd>→</kbd> · <kbd>Space</kbd> 점프 · <kbd>Z</kbd> 공격
-  </div>
-</div>
-
-<div id="uploadPanel" style="display:none">
-  <div>몬스터 이미지</div>
-  <label for="monsterFile">클릭해서 변경</label>
-  <input type="file" id="monsterFile" accept="image/*">
-</div>
-
-<!-- Start / Game-over / Victory overlay -->
-<div id="overlay">
-  <h1 id="overlayTitle">JUNO FLOW</h1>
-  <div class="sub" id="overlaySub">A CREEPY PLATFORMER</div>
-  <p id="overlayBody">
-    모든 몬스터를 처치하고 다음 스테이지로 진행하세요.<br>
-    너무 오래 바라보면 그것은 더 빨라집니다.
-  </p>
-  <div class="controls" id="overlayControls">
-    <div class="k"><kbd>←</kbd> <kbd>→</kbd></div><div class="v">이동</div>
-    <div class="k"><kbd>Space</kbd></div><div class="v">점프 (꾹 누르면 높이 점프)</div>
-    <div class="k"><kbd>Z</kbd></div><div class="v">공격</div>
-  </div>
-
-  <label id="startDrop">
-    <div style="color:#ffd24a; font-weight:700">(선택) 나만의 몬스터 이미지 사용</div>
-    <div>클릭 / 드래그 / Ctrl+V 붙여넣기 — 안 올리면 기본 몬스터로 진행</div>
-    <input type="file" id="startFile" accept="image/*">
-  </label>
-  <div id="previewWrap"><img id="preview" alt="preview"></div>
-
-  <button id="actionBtn">모 험 시 작</button>
-</div>
-
-<script>
-/* =============================================================
-   CREEPY PLATFORMER
-   Modules (in order defined below):
-     Config    : tunable numbers
-     Input     : keyboard
-     Audio     : music + sfx via Web Audio
-     Camera    : follow + shake
-     Effects   : flash / shake / particles / damage nums
-     Level     : platforms
-     Player    : physics, jump (variable + coyote + buffer), attack
-     Enemy     : AI (patrol / chase / stare / aggression), death
-     Combat    : attack vs enemy hitbox
-     Stage     : enemy spawning, clear conditions, progression
-     Renderer  : draws everything in order
-     Game      : overall state machine, loop, UI screens
-   ============================================================= */
-
-// -------------------------------------------------------------
-// Canvas
-// -------------------------------------------------------------
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-let W = 0, H = 0;
-function resize() {
-  W = window.innerWidth; H = window.innerHeight;
-  canvas.width = W; canvas.height = H;
-}
-window.addEventListener('resize', resize); resize();
-
-// -------------------------------------------------------------
-// Config
-// -------------------------------------------------------------
-const Config = {
-  gravity: 0.6,
-  moveSpeed: 5.2,
-  jumpInitial: 9,        // initial upward velocity
-  jumpHoldBoost: 0.55,   // extra upward accel while Space held
-  jumpMaxHoldTime: 0.28, // seconds
-  coyoteTime: 0.1,       // grace after walking off
-  jumpBufferTime: 0.12,  // pre-input window
-  playerMaxHP: 100,
-  attackDuration: 0.18,
-  attackCooldown: 0.28,
-  attackReach: 70,
-  attackDamage: 25,
-  enemyContactDamage: 10,
-  enemyContactCooldown: 0.9,
-  worldWidth: 3600,
-  tileSize: 32,
-};
-
-// -------------------------------------------------------------
-// Input — with edge detect + jump buffer
-// -------------------------------------------------------------
-const Input = {
-  held: {},
-  pressed: {},
-  jumpBuffer: 0,
-  init() {
-    window.addEventListener('keydown', e => {
-      const k = e.key.toLowerCase();
-      if ([' ','arrowleft','arrowright','arrowup','arrowdown','z'].includes(k)) e.preventDefault();
-      if (!this.held[k]) this.pressed[k] = true;
-      if (k === ' ' && !this.held[k]) this.jumpBuffer = Config.jumpBufferTime;
-      this.held[k] = true;
-    });
-    window.addEventListener('keyup', e => { this.held[e.key.toLowerCase()] = false; });
-  },
-  update(dt) { if (this.jumpBuffer > 0) this.jumpBuffer -= dt; },
-  down(k)     { return !!this.held[k.toLowerCase()]; },
-  tap(k)      { const v = this.pressed[k.toLowerCase()]; this.pressed[k.toLowerCase()] = false; return !!v; },
-  consumeJump() { if (this.jumpBuffer > 0) { this.jumpBuffer = 0; return true; } return false; }
-};
-Input.init();
-
-// -------------------------------------------------------------
-// Audio — music loop + sfx (Web Audio synthesized)
-// -------------------------------------------------------------
-const Audio = {
-  ctx: null,
-  musicStarted: false,
-  _music: null,
-  _ctx() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); return this.ctx; },
-
-  sfx(freq, dur, type = 'square', vol = 0.1) {
-    const c = this._ctx(); const now = c.currentTime;
-    const o = c.createOscillator(); o.type = type; o.frequency.value = freq;
-    const g = c.createGain();
-    g.gain.setValueAtTime(vol, now);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-    o.connect(g); g.connect(c.destination);
-    o.start(now); o.stop(now + dur + 0.02);
-  },
-  jump()   { this.sfx(560, 0.08, 'square', 0.06); this.sfx(720, 0.08, 'square', 0.05); },
-  attack() { this.sfx(220, 0.07, 'sawtooth', 0.08); },
-  hit()    { this.sfx(900, 0.05, 'square', 0.12); this.sfx(300, 0.09, 'square', 0.08); },
-  hurt()   { this.sfx(140, 0.2, 'sawtooth', 0.18); },
-  die()    {
-    this.sfx(200, 0.14, 'sawtooth', 0.15);
-    setTimeout(() => this.sfx(120, 0.2, 'sawtooth', 0.12), 80);
-    setTimeout(() => this.sfx(80, 0.35, 'sawtooth', 0.1), 160);
-  },
-  stare()  { this.sfx(1100, 0.05, 'sine', 0.06); },
-
-  // creepy looping ambient music
-  startMusic() {
-    if (this.musicStarted) return;
-    this.musicStarted = true;
-    const c = this._ctx();
-    // low drone
-    const drone = c.createOscillator(); drone.type = 'sawtooth'; drone.frequency.value = 55;
-    const df = c.createBiquadFilter(); df.type = 'lowpass'; df.frequency.value = 180;
-    const dg = c.createGain(); dg.gain.value = 0.04;
-    drone.connect(df); df.connect(dg); dg.connect(c.destination);
-    drone.start();
-
-    // noise wash
-    const bs = 2 * c.sampleRate;
-    const nb = c.createBuffer(1, bs, c.sampleRate);
-    const d = nb.getChannelData(0);
-    for (let i = 0; i < bs; i++) d[i] = (Math.random() * 2 - 1) * 0.3;
-    const ns = c.createBufferSource(); ns.buffer = nb; ns.loop = true;
-    const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 400; nf.Q.value = 0.8;
-    const ng = c.createGain(); ng.gain.value = 0.03;
-    ns.connect(nf); nf.connect(ng); ng.connect(c.destination);
-    ns.start();
-
-    // occasional eerie tones
-    const eerieNotes = [220, 165, 277, 185, 146];
-    let i = 0;
-    const eerieLoop = () => {
-      if (!this.musicStarted) return;
-      const n = eerieNotes[i % eerieNotes.length]; i++;
-      const now = c.currentTime;
-      const o = c.createOscillator(); o.type = 'triangle'; o.frequency.value = n;
-      const g = c.createGain();
-      g.gain.setValueAtTime(0.0001, now);
-      g.gain.exponentialRampToValueAtTime(0.04, now + 0.5);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + 3.2);
-      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600;
-      o.connect(f); f.connect(g); g.connect(c.destination);
-      o.start(now); o.stop(now + 3.3);
-      setTimeout(eerieLoop, 4500 + Math.random() * 3000);
-    };
-    setTimeout(eerieLoop, 2000);
-  }
-};
-
-// -------------------------------------------------------------
-// Camera — with shake
-// -------------------------------------------------------------
-const Camera = {
-  x: 0, y: 0, shake: 0,
-  update() {
-    const target = Player.x + Player.w / 2 - W / 2;
-    this.x += (target - this.x) * 0.14;
-    this.x = Math.max(0, Math.min(Config.worldWidth - W, this.x));
-    this.shake *= 0.82;
-  },
-  shakeNow(amt) { this.shake = Math.max(this.shake, amt); },
-  offsetX() { return (Math.random() - 0.5) * this.shake; },
-  offsetY() { return (Math.random() - 0.5) * this.shake; }
-};
-
-// -------------------------------------------------------------
-// Effects — flash overlay, particles, damage numbers
-// -------------------------------------------------------------
-const Effects = {
-  particles: [],
-  dmgNums: [],
-
-  hitFlash(intensity = 0.4) {
-    const el = document.getElementById('flash');
-    el.style.opacity = intensity;
-    setTimeout(() => { el.style.opacity = '0'; }, 80);
-  },
-  spawnBurst(x, y, color, count = 10) {
-    for (let i = 0; i < count; i++) {
-      this.particles.push({
-        x, y,
-        vx: (Math.random() - 0.5) * 6,
-        vy: -2 - Math.random() * 4,
-        life: 1,
-        color
-      });
-    }
-  },
-  spawnDamageNum(x, y, text, crit = false) {
-    this.dmgNums.push({ x, y, text, crit, life: 1 });
-  },
-  update(dt) {
-    for (const p of this.particles) {
-      p.vy += 0.35; p.x += p.vx; p.y += p.vy; p.life -= dt * 1.5;
-    }
-    this.particles = this.particles.filter(p => p.life > 0);
-    for (const d of this.dmgNums) { d.y -= 40 * dt; d.life -= dt * 1.3; }
-    this.dmgNums = this.dmgNums.filter(d => d.life > 0);
-  },
-  draw() {
-    for (const p of this.particles) {
-      ctx.globalAlpha = p.life;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x - Camera.x - 2, p.y - 2, 4, 4);
-    }
-    ctx.globalAlpha = 1;
-    for (const d of this.dmgNums) {
-      ctx.globalAlpha = d.life;
-      ctx.font = `bold ${d.crit ? 22 : 16}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
-      ctx.strokeText(d.text, d.x - Camera.x, d.y);
-      ctx.fillStyle = d.crit ? '#ffe64a' : '#fff';
-      ctx.fillText(d.text, d.x - Camera.x, d.y);
-    }
-    ctx.globalAlpha = 1;
-  }
-};
-
-// -------------------------------------------------------------
-// Level — multi-height platforms
-// -------------------------------------------------------------
-const Level = {
-  groundY: 540,
-  platforms: [
-    // ground pieces with gaps
-    { x: 0,    y: 540, w: 800,  h: 80 },
-    { x: 900,  y: 540, w: 500,  h: 80 },
-    { x: 1500, y: 540, w: 600,  h: 80 },
-    { x: 2200, y: 540, w: 1400, h: 80 },
-    // mid and upper platforms
-    { x: 250,  y: 420, w: 160, h: 14 },
-    { x: 500,  y: 330, w: 160, h: 14 },
-    { x: 750,  y: 240, w: 160, h: 14 },
-    { x: 1000, y: 400, w: 160, h: 14 },
-    { x: 1250, y: 320, w: 180, h: 14 },
-    { x: 1600, y: 440, w: 180, h: 14 },
-    { x: 1850, y: 360, w: 180, h: 14 },
-    { x: 2100, y: 280, w: 180, h: 14 },
-    { x: 2400, y: 380, w: 180, h: 14 },
-    { x: 2650, y: 300, w: 180, h: 14 },
-    { x: 2950, y: 420, w: 180, h: 14 },
-    { x: 3200, y: 340, w: 180, h: 14 },
-  ]
-};
-
-// -------------------------------------------------------------
-// Rectangle overlap
-// -------------------------------------------------------------
-function rectsOverlap(a, b) {
-  return a.x < b.x + b.w && a.x + a.w > b.x &&
-         a.y < b.y + b.h && a.y + a.h > b.y;
-}
-
-// -------------------------------------------------------------
-// Player — responsive platforming
-// -------------------------------------------------------------
-const Player = {
-  x: 80, y: 400, w: 32, h: 48,
-  vx: 0, vy: 0,
-  facing: 1,
-  onGround: false,
-  coyote: 0,
-  jumpHold: 0,
-  hp: Config.playerMaxHP,
-  maxHp: Config.playerMaxHP,
-  invuln: 0,
-  attackTimer: 0,
-  attackCooldown: 0,
-  animT: 0,
-  hitFlash: 0,
-
-  reset() {
-    this.x = 80; this.y = 400;
-    this.vx = 0; this.vy = 0;
-    this.hp = this.maxHp;
-    this.invuln = 0;
-    this.attackTimer = 0;
-    this.attackCooldown = 0;
-    this.coyote = 0; this.jumpHold = 0;
-  },
-
-  update(dt) {
-    this.animT += dt;
-    if (this.invuln > 0) this.invuln -= dt;
-    if (this.attackCooldown > 0) this.attackCooldown -= dt;
-    if (this.attackTimer > 0) this.attackTimer -= dt;
-    if (this.hitFlash > 0) this.hitFlash -= dt;
-
-    // horizontal
-    this.vx = 0;
-    if (Input.down('arrowleft'))  { this.vx = -Config.moveSpeed; this.facing = -1; }
-    if (Input.down('arrowright')) { this.vx = +Config.moveSpeed; this.facing = +1; }
-
-    // jump with coyote + buffer + variable height
-    if (this.onGround) this.coyote = Config.coyoteTime;
-    else this.coyote -= dt;
-
-    if (Input.consumeJump() && this.coyote > 0) {
-      this.vy = -Config.jumpInitial;
-      this.jumpHold = Config.jumpMaxHoldTime;
-      this.onGround = false;
-      this.coyote = 0;
-      Audio.jump();
-    }
-    if (Input.down(' ') && this.jumpHold > 0 && this.vy < 0) {
-      this.vy -= Config.jumpHoldBoost;
-      this.jumpHold -= dt;
-    } else {
-      this.jumpHold = 0;
-    }
-
-    // attack
-    if (Input.tap('z') && this.attackCooldown <= 0) {
-      this.attackTimer = Config.attackDuration;
-      this.attackCooldown = Config.attackCooldown;
-      Audio.attack();
-      Combat.performAttack();
-    }
-
-    // gravity
-    this.vy += Config.gravity;
-    if (this.vy > 17) this.vy = 17;
-
-    // integrate horizontal
-    this.x += this.vx;
-    this.x = Math.max(0, Math.min(Config.worldWidth - this.w, this.x));
-
-    // integrate vertical with platform landing
-    this.y += this.vy;
-    this.onGround = false;
-    for (const p of Level.platforms) {
-      if (this.vy >= 0 &&
-          this.x + this.w > p.x && this.x < p.x + p.w &&
-          this.y + this.h >= p.y && this.y + this.h <= p.y + Math.max(20, p.h)) {
-        this.y = p.y - this.h;
-        this.vy = 0;
-        this.onGround = true;
-      }
-    }
-
-    // death by fall
-    if (this.y > H + 100) this.hit(30);
-  },
-
-  hit(dmg, fromX) {
-    if (this.invuln > 0) return;
-    this.hp = Math.max(0, this.hp - dmg);
-    this.invuln = Config.enemyContactCooldown;
-    this.hitFlash = 0.25;
-    // knockback
-    if (fromX !== undefined) this.vx = this.x < fromX ? -7 : 7;
-    this.vy = -6;
-    Audio.hurt();
-    Effects.hitFlash(0.45);
-    Camera.shakeNow(10);
-    Effects.spawnDamageNum(this.x + this.w / 2, this.y - 10, dmg);
-    if (this.hp <= 0) Game.gameOver();
-  },
-
-  attackBox() {
-    const ax = this.facing > 0 ? this.x + this.w : this.x - Config.attackReach;
-    return { x: ax, y: this.y + 6, w: Config.attackReach, h: this.h - 12 };
-  },
-
-  draw() {
-    const sx = this.x - Camera.x + Camera.offsetX();
-    const sy = this.y + Camera.offsetY();
-    // invuln blink
-    if (this.invuln > 0 && Math.floor(this.invuln * 20) % 2 === 0) return;
-
-    // hit tint
-    if (this.hitFlash > 0) ctx.filter = 'brightness(2.5)';
-
-    // legs
-    ctx.fillStyle = '#2a3a5a';
-    const walking = Math.abs(this.vx) > 0.1 && this.onGround;
-    const swing = walking ? Math.sin(this.animT * 16) * 3 : 0;
-    ctx.fillRect(sx + 6, sy + 30, 8, 18 - swing);
-    ctx.fillRect(sx + 18, sy + 30, 8, 18 + swing);
-    // body
-    ctx.fillStyle = '#4288dd';
-    ctx.fillRect(sx + 4, sy + 14, 24, 20);
-    // belt
-    ctx.fillStyle = '#5a3a1a';
-    ctx.fillRect(sx + 4, sy + 30, 24, 3);
-    // head
-    ctx.fillStyle = '#f2c69a';
-    ctx.fillRect(sx + 6, sy, 20, 16);
-    // hair
-    ctx.fillStyle = '#3a2412';
-    ctx.fillRect(sx + 4, sy, 24, 6);
-    // eyes
-    ctx.fillStyle = '#000';
-    const ex = this.facing > 0 ? sx + 18 : sx + 8;
-    ctx.fillRect(ex, sy + 8, 3, 3);
-
-    // arm + attack
-    if (this.attackTimer > 0) {
-      const box = this.attackBox();
-      ctx.fillStyle = 'rgba(255,220,120,0.5)';
-      ctx.fillRect(box.x - Camera.x, box.y, box.w, box.h);
-      // blade
-      ctx.fillStyle = '#e0e4ee';
-      if (this.facing > 0) ctx.fillRect(sx + this.w, sy + 18, 46, 6);
-      else ctx.fillRect(sx - 46, sy + 18, 46, 6);
-      ctx.fillStyle = '#8e9ab0';
-      if (this.facing > 0) ctx.fillRect(sx + this.w, sy + 20, 46, 2);
-      else ctx.fillRect(sx - 46, sy + 20, 46, 2);
-    } else {
-      ctx.fillStyle = '#f2c69a';
-      if (this.facing > 0) ctx.fillRect(sx + 24, sy + 18, 5, 12);
-      else ctx.fillRect(sx + 3, sy + 18, 5, 12);
-    }
-
-    ctx.filter = 'none';
-  }
-};
-
-// -------------------------------------------------------------
-// Enemy — AI: patrol / chase / stare / aggression, death anim
-// -------------------------------------------------------------
-const Enemy = {
-  image: null,
-  imageKeyed: null,  // background-removed version
-  imageReady: false,
-  useDefault: true,  // use procedurally drawn default monster
-
-  list: [],
-
-  setImage(img) {
-    this.useDefault = false;
-    this.image = img;
-    this.imageReady = true;
-    // pre-key background
-    const c = document.createElement('canvas');
-    c.width = img.naturalWidth; c.height = img.naturalHeight;
-    const cc = c.getContext('2d');
-    cc.drawImage(img, 0, 0);
-    try {
-      const id = cc.getImageData(0, 0, c.width, c.height);
-      const d = id.data;
-      const bR = d[0], bG = d[1], bB = d[2];
-      for (let i = 0; i < d.length; i += 4) {
-        const dist = Math.hypot(d[i] - bR, d[i+1] - bG, d[i+2] - bB);
-        const isCyan = d[i+2] > 140 && d[i+1] > 130 && d[i] < 210 && d[i+2] > d[i] + 20;
-        if (dist < 40 || (isCyan && dist < 110)) d[i+3] = 0;
-        else if (dist < 75) d[i+3] = Math.floor(((dist - 40) / 35) * 255);
-      }
-      cc.putImageData(id, 0, 0);
-      const out = new Image(); out.src = c.toDataURL('image/png');
-      this.imageKeyed = out;
-    } catch (e) {}
-  },
-
-  spawn(x, y, hpMult = 1) {
-    this.list.push({
-      x, y, w: 48, h: 64,
-      vx: 0, vy: 0,
-      hp: Math.floor(40 * hpMult),
-      maxHp: Math.floor(40 * hpMult),
-      facing: -1,
-      onGround: false,
-      bob: Math.random() * 6,
-      // AI state
-      ai: 'PATROL',
-      aiTimer: 1 + Math.random() * 2,
-      patrolDir: Math.random() < 0.5 ? -1 : 1,
-      aggression: 0,        // 0..1 — how much player has been looking
-      starePose: 0,         // timer for stare animation
-      speedBoost: 0,        // short burst when player very close
-      // hit / death
-      hitFlash: 0,
-      dying: false,
-      dyingT: 0,
-      justHitCooldown: 0,
-    });
-  },
-
-  allDead() { return this.list.every(e => e.dying || e.hp <= 0); },
-
-  update(dt) {
-    for (const e of this.list) {
-      e.bob += dt;
-      if (e.hitFlash > 0) e.hitFlash -= dt;
-      if (e.justHitCooldown > 0) e.justHitCooldown -= dt;
-
-      // death animation
-      if (e.dying) {
-        e.dyingT += dt;
-        e.vy += Config.gravity * 0.6;
-        e.y += e.vy;
-        e.x += e.vx * 0.5;
-        e.vx *= 0.94;
-        continue;
+<!doctype html>
+<html lang="ko" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JUNO FLOW RANK CONSOLE</title>
+    <style>
+      :root {
+        --background-base: #020617;
+        --layer-surface: #020617;
+        --fill-strong: #020617;
+        --fill-normal: #0f172a;
+        --fill-neutral: #020617;
+        --line-strong: rgba(148, 163, 184, 0.5);
+        --line-neutral: rgba(148, 163, 184, 0.3);
+        --accent-brand-bg: rgba(59, 130, 246, 0.2);
+        --accent-brand-normal: #60a5fa;
+        --accent-action-normal: #22c55e;
+        --accent-action-strong: #16a34a;
+        --state-error: #ef4444;
+        --state-warning: #f97316;
+        --state-success: #22c55e;
+        --state-info: #38bdf8;
+        --label-normal: #e5e7eb;
+        --label-neutral: #9ca3af;
+        --label-alternative: #6b7280;
+        --label-assistive: #6b7280;
+        --static-white: #ffffff;
+        --focus-ring: #38bdf8;
+        --radius-full: 999px;
+        --radius-xl: 24px;
+        --radius-lg: 18px;
+        --radius-md: 12px;
+        --radius-sm: 8px;
+        --shadow-lg: 0 40px 80px rgba(15, 23, 42, 0.8);
+        --shadow-md: 0 20px 40px rgba(15, 23, 42, 0.6);
+        --shadow-sm: 0 10px 20px rgba(15, 23, 42, 0.5);
+        --spacing-3xl: 64px;
+        --spacing-2xl: 48px;
+        --spacing-xl: 32px;
+        --spacing-lg: 24px;
+        --spacing-md: 16px;
+        --spacing-sm: 12px;
+        --spacing-xs: 8px;
+        --spacing-2xs: 6px;
+        --spacing-3xs: 4px;
+        --font-size-3xl: 32px;
+        --font-size-2xl: 24px;
+        --font-size-md: 16px;
+        --font-size-sm: 14px;
+        --font-size-xs: 12px;
+        --font-size-xxs: 11px;
+        --weight-bold: 700;
+        --weight-medium: 500;
+        --duration-fast: 120ms;
+        --duration-slow: 900ms;
+        --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
       }
 
-      // distance to player
-      const dx = (Player.x + Player.w / 2) - (e.x + e.w / 2);
-      const dy = (Player.y + Player.h / 2) - (e.y + e.h / 2);
-      const dist = Math.hypot(dx, dy);
-
-      // is player looking at this enemy? (enemy is on screen, player facing toward)
-      const onScreen = (e.x + e.w > Camera.x && e.x < Camera.x + W);
-      const lookingAt = onScreen && dist < 600 &&
-        ((Player.facing > 0 && dx > 0) || (Player.facing < 0 && dx < 0));
-
-      if (lookingAt) e.aggression = Math.min(1, e.aggression + dt * 0.2);
-      else e.aggression = Math.max(0, e.aggression - dt * 0.08);
-
-      // AI state machine
-      e.aiTimer -= dt;
-      const farDist = 280;
-      const closeDist = 150;
-
-      // Occasionally stare
-      if (e.ai === 'PATROL' && e.aiTimer <= 0 && Math.random() < 0.3) {
-        e.ai = 'STARE';
-        e.aiTimer = 0.8 + Math.random() * 1.0;
-        Audio.stare();
+      * {
+        box-sizing: border-box;
       }
 
-      if (e.ai === 'STARE') {
-        // face player, don't move
-        e.vx = 0;
-        e.facing = dx < 0 ? -1 : 1;
-        e.starePose = 1;
-        if (e.aiTimer <= 0) {
-          e.ai = dist < farDist ? 'CHASE' : 'PATROL';
-          e.aiTimer = 1.5 + Math.random() * 2;
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        min-height: 100vh;
+        background: var(--background-base);
+        color: var(--label-normal);
+      }
+
+      /* JUNO FLOW 랭킹 콘솔 레이아웃 */
+      .juno-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--spacing-3xl) var(--spacing-lg);
+        background:
+          radial-gradient(circle at top, var(--accent-brand-bg) 0, transparent 50%),
+          radial-gradient(circle at bottom, var(--fill-strong) 0, var(--background-base) 55%);
+      }
+
+      .juno-shell {
+        width: 100%;
+        max-width: 1040px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr);
+        gap: var(--spacing-xl);
+        background: var(--layer-surface);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-lg);
+        border: 1px solid var(--line-strong);
+        padding: var(--spacing-xl);
+      }
+
+      .juno-panel {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+      }
+
+      .juno-panel--intro {
+        justify-content: center;
+      }
+
+      .juno-panel--console {
+        justify-content: stretch;
+      }
+
+      .juno-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        align-self: flex-start;
+        padding: var(--spacing-3xs) var(--spacing-xs);
+        border-radius: var(--radius-full);
+        background: var(--accent-brand-bg);
+        color: var(--accent-brand-normal);
+        font-size: var(--font-size-xxs);
+        font-weight: var(--weight-bold);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .juno-heading {
+        font-size: var(--font-size-3xl);
+        font-weight: var(--weight-bold);
+        line-height: 1.4;
+      }
+
+      .juno-body {
+        font-size: var(--font-size-md);
+        line-height: 1.5;
+        color: var(--label-neutral);
+      }
+
+      .juno-list {
+        margin: 0;
+        padding-left: var(--spacing-md);
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-2xs);
+        font-size: var(--font-size-sm);
+        color: var(--label-alternative);
+      }
+
+      .juno-list li::marker {
+        color: var(--accent-brand-normal);
+      }
+
+      /* 콘솔 영역 */
+      .juno-console {
+        border-radius: var(--radius-lg);
+        background: radial-gradient(circle at top left, var(--fill-strong) 0, var(--fill-normal) 55%);
+        border: 1px solid var(--line-strong);
+        box-shadow: var(--shadow-md);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .juno-console__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--spacing-2xs) var(--spacing-sm);
+        background: var(--fill-strong);
+        border-bottom: 1px solid var(--line-neutral);
+      }
+
+      .juno-console__dots {
+        display: inline-flex;
+        gap: var(--spacing-3xs);
+      }
+
+      .juno-console__dots span {
+        width: 10px;
+        height: 10px;
+        border-radius: var(--radius-full);
+        background: var(--fill-normal);
+      }
+
+      .juno-console__dots span:nth-child(1) {
+        background: var(--state-error);
+      }
+
+      .juno-console__dots span:nth-child(2) {
+        background: var(--state-warning);
+      }
+
+      .juno-console__dots span:nth-child(3) {
+        background: var(--state-success);
+      }
+
+      .juno-console__title {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: var(--font-size-xs);
+        color: var(--label-assistive);
+      }
+
+      .juno-console__body {
+        padding: var(--spacing-sm) var(--spacing-md);
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+      }
+
+      .juno-console__section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+      }
+
+      .juno-console__line {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: var(--font-size-xs);
+        color: var(--label-normal);
+      }
+
+      .juno-console__line--muted {
+        color: var(--label-assistive);
+      }
+
+      .juno-console__prompt {
+        color: var(--accent-brand-normal);
+        margin-right: var(--spacing-3xs);
+      }
+
+      .juno-console__hint {
+        font-size: var(--font-size-xxs);
+        color: var(--label-assistive);
+      }
+
+      .juno-console__status {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-2xs);
+      }
+
+      .juno-console__divider {
+        height: 1px;
+        background: linear-gradient(to right, transparent, var(--line-neutral), transparent);
+      }
+
+      /* 폼 요소 */
+      .juno-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+      }
+
+      .juno-form--inline {
+        gap: var(--spacing-2xs);
+      }
+
+      .juno-form__row {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-3xs);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: var(--font-size-xs);
+      }
+
+      .juno-form__fields {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-xs);
+        align-items: flex-end;
+      }
+
+      .juno-label {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-3xs);
+        font-size: var(--font-size-xs);
+        color: var(--label-assistive);
+      }
+
+      .juno-label--inline {
+        min-width: 120px;
+      }
+
+      .juno-input {
+        width: 100%;
+        padding: var(--spacing-3xs) var(--spacing-xs);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--line-neutral);
+        background: var(--fill-neutral);
+        color: var(--label-normal);
+        font-size: var(--font-size-sm);
+        transition: border-color var(--duration-fast) var(--ease-in-out),
+          box-shadow var(--duration-fast) var(--ease-in-out),
+          background-color var(--duration-fast) var(--ease-in-out);
+      }
+
+      .juno-input--inline {
+        max-width: 140px;
+      }
+
+      .juno-input::placeholder {
+        color: var(--label-assistive);
+      }
+
+      .juno-input:focus-visible {
+        outline: none;
+        border-color: var(--focus-ring);
+        box-shadow: 0 0 0 1px var(--focus-ring);
+      }
+
+      .juno-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--spacing-2xs) var(--spacing-sm);
+        border-radius: var(--radius-md);
+        border: none;
+        cursor: pointer;
+        font-size: var(--font-size-xs);
+        font-weight: var(--weight-medium);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: var(--accent-action-normal);
+        color: var(--static-white);
+        transition: background-color var(--duration-fast) var(--ease-in-out),
+          transform var(--duration-fast) var(--ease-in-out),
+          box-shadow var(--duration-fast) var(--ease-in-out);
+      }
+
+      .juno-button--small {
+        padding-inline: var(--spacing-xs);
+        padding-block: var(--spacing-3xs);
+      }
+
+      .juno-button:hover {
+        background: var(--accent-action-strong);
+        box-shadow: var(--shadow-sm);
+        transform: translateY(-1px);
+      }
+
+      .juno-button:active {
+        transform: translateY(0);
+        box-shadow: none;
+      }
+
+      .juno-button:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+
+      /* 랭킹 테이블 */
+      .juno-ranking {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+      }
+
+      .juno-ranking__header {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-3xs);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: var(--font-size-xs);
+        color: var(--label-neutral);
+      }
+
+      .juno-console__cmd {
+        color: var(--state-info);
+      }
+
+      .juno-console__caret {
+        display: inline-block;
+        width: 0.6ch;
+        height: 1.1em;
+        margin-left: var(--spacing-3xs);
+        background: var(--static-white);
+        animation: juno-blink var(--duration-slow) steps(1, end) infinite;
+      }
+
+      .juno-ranking__table-wrapper {
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--line-neutral);
+        background: rgba(0, 0, 0, 0.08);
+        max-height: 260px;
+        overflow: auto;
+      }
+
+      .juno-ranking__table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        font-size: var(--font-size-xxs);
+      }
+
+      .juno-ranking__table thead {
+        position: sticky;
+        top: 0;
+        background: var(--fill-strong);
+      }
+
+      .juno-ranking__table th,
+      .juno-ranking__table td {
+        padding: var(--spacing-3xs) var(--spacing-2xs);
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      .juno-ranking__table th {
+        color: var(--label-assistive);
+        font-weight: var(--weight-medium);
+        border-bottom: 1px solid var(--line-neutral);
+      }
+
+      .juno-ranking__table tbody tr:nth-child(odd) {
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .juno-ranking__table tbody tr:nth-child(even) {
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .juno-ranking__table tbody tr:first-child td {
+        color: var(--state-success);
+        font-weight: var(--weight-medium);
+      }
+
+      .juno-ranking__table td:first-child {
+        width: 32px;
+      }
+
+      .juno-ranking__table td:nth-child(2) {
+        max-width: 140px;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+
+      @keyframes juno-blink {
+        0%,
+        50% {
+          opacity: 1;
         }
-      } else if (dist < farDist) {
-        // chase
-        e.ai = 'CHASE';
-        // base chase speed increases with aggression
-        const baseSpeed = 1.6 + e.aggression * 2.5;
-        // sudden burst when very close
-        if (dist < closeDist && e.speedBoost <= 0 && Math.random() < 0.02) {
-          e.speedBoost = 0.4;
-          Audio.stare();
-        }
-        if (e.speedBoost > 0) { e.speedBoost -= dt; }
-        const speed = baseSpeed + (e.speedBoost > 0 ? 3 : 0);
-        e.vx = Math.sign(dx) * speed;
-        e.facing = e.vx < 0 ? -1 : 1;
-      } else {
-        // patrol
-        e.ai = 'PATROL';
-        e.vx = e.patrolDir * 1.4;
-        e.facing = e.patrolDir;
-        if (e.aiTimer <= 0) {
-          e.patrolDir *= -1;
-          e.aiTimer = 2 + Math.random() * 3;
+        51%,
+        100% {
+          opacity: 0;
         }
       }
 
-      // physics
-      e.vy += Config.gravity;
-      if (e.vy > 16) e.vy = 16;
-      e.x += e.vx;
-      e.x = Math.max(0, Math.min(Config.worldWidth - e.w, e.x));
-      e.y += e.vy;
-      e.onGround = false;
-      let platformUnder = null;
-      for (const p of Level.platforms) {
-        if (e.vy >= 0 &&
-            e.x + e.w > p.x && e.x < p.x + p.w &&
-            e.y + e.h >= p.y && e.y + e.h <= p.y + Math.max(20, p.h)) {
-          e.y = p.y - e.h;
-          e.vy = 0;
-          e.onGround = true;
-          platformUnder = p;
+      /* 반응형 (모바일 대응) */
+      @media (max-width: 767px) {
+        .juno-page {
+          padding: var(--spacing-2xl) var(--spacing-md);
+        }
+
+        .juno-shell {
+          grid-template-columns: minmax(0, 1fr);
+          padding: var(--spacing-lg);
+        }
+
+        .juno-heading {
+          font-size: var(--font-size-2xl);
+        }
+
+        .juno-body {
+          font-size: var(--font-size-sm);
+        }
+
+        .juno-ranking__table-wrapper {
+          max-height: 220px;
         }
       }
-      // patrol turnaround at edges
-      if (e.ai === 'PATROL' && platformUnder) {
-        if (e.x < platformUnder.x + 4) { e.patrolDir = 1; }
-        if (e.x + e.w > platformUnder.x + platformUnder.w - 4) { e.patrolDir = -1; }
-      }
+    </style>
+  </head>
+  <body>
+    <main class="juno-page">
+      <section class="juno-shell" aria-label="JUNO FLOW 랭킹 콘솔">
+        <div class="juno-panel juno-panel--intro">
+          <p class="juno-badge">JUNO FLOW · RANKING</p>
+          <h1 class="juno-heading">JUNO FLOW RANK CONSOLE</h1>
+          <p class="juno-body">
+            JUNO FLOW에서 살아남은 여정의 기록을 남겨보세요.<br />
+            닉네임을 입력하고, 클리어한 스테이지와 점수를 콘솔에 적어두면,
+            당신만의 랭킹 보드가 만들어집니다.
+          </p>
 
-      // contact damage
-      if (e.justHitCooldown <= 0 && rectsOverlap(e, Player)) {
-        Player.hit(Config.enemyContactDamage, e.x + e.w / 2);
-        e.justHitCooldown = 0.4;
-      }
-    }
+          <ul class="juno-list">
+            <li>접속 시 닉네임을 한 번 설정하면 계속 사용됩니다.</li>
+            <li>모바일에서도 보기 좋게 정렬된 콘솔 스타일 UI입니다.</li>
+            <li>브라우저에 기록되므로, 같은 기기에서는 닉네임이 유지됩니다.</li>
+          </ul>
+        </div>
 
-    // remove enemies that finished dying
-    this.list = this.list.filter(e => !(e.dying && e.dyingT > 1.2));
-  },
+        <div class="juno-panel juno-panel--console" aria-label="랭킹 콘솔">
+          <div class="juno-console">
+            <header class="juno-console__header" aria-hidden="true">
+              <div class="juno-console__dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <span class="juno-console__title">JUNO FLOW // RANKING SHELL</span>
+            </header>
 
-  damage(e, dmg, fromFacing) {
-    e.hp -= dmg;
-    e.hitFlash = 0.15;
-    e.x += fromFacing * 18; // knockback
-    Audio.hit();
-    Camera.shakeNow(5);
-    const crit = Math.random() < 0.18;
-    Effects.spawnDamageNum(e.x + e.w / 2, e.y, crit ? Math.floor(dmg * 1.5) : dmg, crit);
-    if (e.hp <= 0 && !e.dying) {
-      e.dying = true;
-      e.dyingT = 0;
-      e.vy = -6;
-      e.vx = fromFacing * 3;
-      Audio.die();
-      Effects.spawnBurst(e.x + e.w / 2, e.y + e.h / 2, '#e8c547', 14);
-      Stage.onEnemyKilled();
-    }
-  },
+            <div class="juno-console__body">
+              <section class="juno-console__section" id="name-section" aria-label="닉네임 설정">
+                <p class="juno-console__line">
+                  <span class="juno-console__prompt">&gt;&gt;</span>
+                  <span> 최초 접속 감지. 플레이어 닉네임을 설정하세요.</span>
+                </p>
+                <form class="juno-form" id="name-form">
+                  <label class="juno-label">
+                    닉네임
+                    <input
+                      class="juno-input"
+                      id="name-input"
+                      placeholder="예: shadow-juno"
+                      autocomplete="off"
+                    />
+                  </label>
+                  <button class="juno-button" type="submit">SET NAME</button>
+                </form>
+                <p class="juno-console__hint">※ 나중에 브라우저 저장소를 지우면 다시 설정할 수 있습니다.</p>
+              </section>
 
-  draw() {
-    for (const e of this.list) {
-      const sx = e.x - Camera.x + Camera.offsetX();
-      const sy = e.y + Camera.offsetY();
-      if (sx + e.w < -20 || sx > W + 20) continue;
-      const bob = Math.sin(e.bob * 3) * 2;
-      const shake = (e.ai === 'STARE' || e.aggression > 0.5) ? (Math.random() - 0.5) * 1.5 : 0;
+              <section class="juno-console__section" id="rank-section" aria-label="랭킹 기록 및 목록" style="display:none">
+                <div class="juno-console__status">
+                  <p class="juno-console__line">
+                    <span class="juno-console__prompt">&gt;&gt;</span>
+                    <span>
+                      PLAYER <strong id="player-name-label"></strong> 로그인됨.
+                    </span>
+                  </p>
+                  <p class="juno-console__line juno-console__line--muted">
+                    <span class="juno-console__prompt">//</span>
+                    <span> 닉네임은 브라우저 저장소를 초기화하기 전까지 유지됩니다.</span>
+                  </p>
+                </div>
 
-      ctx.save();
+                <form class="juno-form juno-form--inline" id="score-form">
+                  <div class="juno-form__row">
+                    <span class="juno-console__prompt">$</span>
+                    <span class="juno-console__cmd"> submit-score</span>
+                  </div>
+                  <div class="juno-form__fields">
+                    <label class="juno-label juno-label--inline">
+                      점수
+                      <input
+                        class="juno-input juno-input--inline"
+                        placeholder="예: 1200"
+                        inputmode="numeric"
+                        id="score-input"
+                        required
+                      />
+                    </label>
+                    <label class="juno-label juno-label--inline">
+                      스테이지
+                      <input
+                        class="juno-input juno-input--inline"
+                        placeholder="선택 사항"
+                        inputmode="numeric"
+                        id="stage-input"
+                      />
+                    </label>
+                    <button class="juno-button juno-button--small" type="submit">기록 남기기</button>
+                  </div>
+                </form>
 
-      // fade out while dying
-      if (e.dying) ctx.globalAlpha = Math.max(0, 1 - e.dyingT / 1.2);
+                <div class="juno-console__divider" aria-hidden="true"></div>
 
-      // hit flash
-      if (e.hitFlash > 0) ctx.filter = 'brightness(2.5)';
+                <div class="juno-ranking" aria-label="현재 저장된 랭킹 목록">
+                  <div class="juno-ranking__header">
+                    <span class="juno-console__prompt">#</span>
+                    <span> RANKING BOARD</span>
+                    <span class="juno-console__caret" aria-hidden="true"></span>
+                  </div>
 
-      // red aura when aggression high
-      if (e.aggression > 0.4) {
-        const aura = ctx.createRadialGradient(
-          sx + e.w / 2, sy + e.h / 2, 10,
-          sx + e.w / 2, sy + e.h / 2, e.w * 1.3
-        );
-        aura.addColorStop(0, `rgba(180,0,0,${0.2 * e.aggression})`);
-        aura.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = aura;
-        ctx.fillRect(sx - e.w, sy - e.h, e.w * 3, e.h * 3);
-      }
+                  <p class="juno-console__line juno-console__line--muted" id="empty-message">
+                    아직 기록이 없습니다. 첫 번째 기록을 남겨보세요.
+                  </p>
 
-      // shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.beginPath();
-      ctx.ellipse(sx + e.w / 2, sy + e.h, e.w * 0.45, 4, 0, 0, Math.PI * 2);
-      ctx.fill();
+                  <div class="juno-ranking__table-wrapper" id="table-wrapper" style="display:none">
+                    <table class="juno-ranking__table">
+                      <thead>
+                        <tr>
+                          <th scope="col">#</th>
+                          <th scope="col">PLAYER</th>
+                          <th scope="col">SCORE</th>
+                          <th scope="col">STAGE</th>
+                          <th scope="col">TIME</th>
+                        </tr>
+                      </thead>
+                      <tbody id="ranking-body"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
 
-      if (this.imageReady && !this.useDefault) {
-        const src = this.imageKeyed && this.imageKeyed.complete ? this.imageKeyed : this.image;
-        ctx.translate(sx + e.w / 2 + shake, sy + bob + shake);
-        ctx.scale(e.facing < 0 ? -1 : 1, 1);
-        if (e.dying) ctx.rotate((e.facing < 0 ? 1 : -1) * e.dyingT * 1.5);
-        const ar = src.width / src.height;
-        const h = e.h;
-        const w = h * ar;
-        ctx.drawImage(src, -w / 2, 0, w, h);
-      } else {
-        // Built-in default monster — a creepy pale humanoid
-        ctx.translate(sx + e.w / 2 + shake, sy + bob + shake);
-        ctx.scale(e.facing < 0 ? -1 : 1, 1);
-        if (e.dying) ctx.rotate((e.facing < 0 ? 1 : -1) * e.dyingT * 1.5);
-        drawDefaultMonster(e);
-      }
+    <script>
+      (function () {
+        const STORAGE_USER_KEY = 'junoFlowUsername';
+        const nameSection = document.getElementById('name-section');
+        const rankSection = document.getElementById('rank-section');
+        const nameForm = document.getElementById('name-form');
+        const nameInput = document.getElementById('name-input');
+        const playerNameLabel = document.getElementById('player-name-label');
+        const scoreForm = document.getElementById('score-form');
+        const scoreInput = document.getElementById('score-input');
+        const stageInput = document.getElementById('stage-input');
+        const rankingBody = document.getElementById('ranking-body');
+        const emptyMessage = document.getElementById('empty-message');
+        const tableWrapper = document.getElementById('table-wrapper');
 
-      ctx.restore();
-      ctx.filter = 'none';
-      ctx.globalAlpha = 1;
+        let currentPlayer = '';
 
-      // hp bar
-      if (!e.dying && e.hp < e.maxHp) {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(sx, sy - 8, e.w, 4);
-        ctx.fillStyle = '#ff5050';
-        ctx.fillRect(sx + 1, sy - 7, (e.w - 2) * (e.hp / e.maxHp), 2);
-      }
-    }
-  }
-};
+        function formatTime(iso) {
+          if (!iso) return '-';
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return '-';
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          const hh = String(d.getHours()).padStart(2, '0');
+          const mi = String(d.getMinutes()).padStart(2, '0');
+          return mm + '/' + dd + ' ' + hh + ':' + mi;
+        }
 
-// -------------------------------------------------------------
-// Combat
-// -------------------------------------------------------------
-const Combat = {
-  performAttack() {
-    const box = Player.attackBox();
-    for (const e of Enemy.list) {
-      if (e.dying) continue;
-      if (rectsOverlap(box, e)) {
-        const crit = Math.random() < 0.2;
-        Enemy.damage(e, crit ? Math.floor(Config.attackDamage * 1.5) : Config.attackDamage, Player.facing);
-      }
-    }
-  }
-};
+        function renderRecords(records) {
+          rankingBody.innerHTML = '';
+          if (!records || records.length === 0) {
+            emptyMessage.style.display = 'block';
+            tableWrapper.style.display = 'none';
+            return;
+          }
+          emptyMessage.style.display = 'none';
+          tableWrapper.style.display = 'block';
 
-// -------------------------------------------------------------
-// Stage — spawning waves, progression
-// -------------------------------------------------------------
-const Stage = {
-  current: 1,
-  targetKills: 5,
-  kills: 0,
-  hpMult: 1,
+          records.forEach(function (record, index) {
+            const tr = document.createElement('tr');
+            const timeLabel = formatTime(record.createdAt);
 
-  start(n) {
-    this.current = n;
-    this.hpMult = 1 + (n - 1) * 0.35;
-    this.targetKills = 4 + n;
-    this.kills = 0;
-    Enemy.list.length = 0;
-    // spawn positions across the stage
-    const positions = [
-      [500, 420], [800, 420], [1200, 420], [1600, 420],
-      [2000, 420], [2400, 420], [2800, 420], [3200, 420],
-      [520, 300], [1020, 380], [1870, 340], [2420, 360],
-    ];
-    const numSpawn = Math.min(positions.length, this.targetKills + 2);
-    for (let i = 0; i < numSpawn; i++) {
-      Enemy.spawn(positions[i][0], positions[i][1], this.hpMult);
-    }
-    updateHUD();
-  },
-  onEnemyKilled() {
-    this.kills++;
-    updateHUD();
-    if (this.kills >= this.targetKills) {
-      setTimeout(() => Game.stageClear(), 800);
-    }
-  }
-};
+            tr.innerHTML =
+              '<td>' +
+              (index + 1) +
+              '</td>' +
+              '<td>' +
+              (record.playerName || '-') +
+              '</td>' +
+              '<td>' +
+              record.score +
+              '</td>' +
+              '<td>' +
+              (record.stage != null ? record.stage : '-') +
+              '</td>' +
+              '<td>' +
+              timeLabel +
+              '</td>';
 
-// -------------------------------------------------------------
-// Renderer
-// -------------------------------------------------------------
-const Renderer = {
-  draw() {
-    // sky gradient (darker at higher stages)
-    const nightAmt = Math.min(1, (Stage.current - 1) * 0.25);
-    const topC = lerpColor('#7ec8e8', '#1a1830', nightAmt);
-    const botC = lerpColor('#c7e8c0', '#2a2530', nightAmt);
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, topC);
-    g.addColorStop(1, botC);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
+            rankingBody.appendChild(tr);
+          });
+        }
 
-    // moon (appears in later stages)
-    if (nightAmt > 0.2) {
-      ctx.fillStyle = `rgba(255,255,220,${nightAmt})`;
-      ctx.beginPath(); ctx.arc(W - 140, 100, 36, 0, Math.PI * 2); ctx.fill();
-    }
+        function fetchRecords() {
+          fetch('/api/rank')
+            .then(function (res) {
+              if (!res.ok) return null;
+              return res.json();
+            })
+            .then(function (data) {
+              if (!data) return;
+              renderRecords(data);
+            })
+            .catch(function () {
+              // 네트워크 오류 시 조용히 무시
+            });
+        }
 
-    // far hills (parallax x0.15)
-    ctx.fillStyle = lerpColor('#8fb08a', '#2a3a2a', nightAmt);
-    const par1 = Camera.x * 0.15;
-    for (let i = -1; i < Math.ceil(W / 400) + 2; i++) {
-      const hx = i * 400 - (par1 % 400);
-      ctx.beginPath();
-      ctx.moveTo(hx, H);
-      ctx.quadraticCurveTo(hx + 200, H - 240, hx + 400, H);
-      ctx.fill();
-    }
-    // mid hills (parallax x0.3)
-    ctx.fillStyle = lerpColor('#6f9a6b', '#1c2a1c', nightAmt);
-    const par2 = Camera.x * 0.3;
-    for (let i = -1; i < Math.ceil(W / 280) + 2; i++) {
-      const hx = i * 280 - (par2 % 280);
-      ctx.beginPath();
-      ctx.moveTo(hx, H);
-      ctx.quadraticCurveTo(hx + 140, H - 180, hx + 280, H);
-      ctx.fill();
-    }
-    // clouds (parallax x0.08)
-    ctx.fillStyle = `rgba(255,255,255,${0.8 - nightAmt * 0.6})`;
-    const par3 = Camera.x * 0.08;
-    for (let i = 0; i < 10; i++) {
-      const x = ((i * 400 - par3) % (W + 400)) - 100;
-      const y = 50 + (i * 41) % 120;
-      drawCloud(x, y, 28 + (i * 7) % 22);
-    }
+        function showRankSection(name) {
+          currentPlayer = name;
+          playerNameLabel.textContent = name;
+          nameSection.style.display = 'none';
+          rankSection.style.display = 'flex';
+          fetchRecords();
+        }
 
-    // platforms
-    for (const p of Level.platforms) {
-      const sx = p.x - Camera.x + Camera.offsetX();
-      const sy = p.y + Camera.offsetY();
-      if (sx + p.w < 0 || sx > W) continue;
-      ctx.fillStyle = lerpColor('#6ac46a', '#2e4a2e', nightAmt);
-      ctx.fillRect(sx, sy, p.w, 6);
-      ctx.fillStyle = lerpColor('#8b5a2b', '#3a2816', nightAmt);
-      ctx.fillRect(sx, sy + 6, p.w, p.h - 6);
-      // grass tufts
-      ctx.fillStyle = lerpColor('#4ea04e', '#1a2a1a', nightAmt);
-      for (let i = 8; i < p.w - 8; i += 24) {
-        ctx.fillRect(sx + i, sy - 3, 2, 4);
-        ctx.fillRect(sx + i + 2, sy - 2, 2, 3);
-      }
-    }
+        // 초기 로드: 닉네임 복원
+        (function init() {
+          try {
+            const savedName = window.localStorage.getItem(STORAGE_USER_KEY);
+            if (savedName) {
+              nameInput.value = savedName;
+              showRankSection(savedName);
+            }
+          } catch (e) {
+            // localStorage 접근 실패 시 무시
+          }
+        })();
 
-    Enemy.draw();
-    Player.draw();
-    Effects.draw();
-  }
-};
+        nameForm.addEventListener('submit', function (e) {
+          e.preventDefault();
+          const trimmed = (nameInput.value || '').trim();
+          if (!trimmed) return;
+          try {
+            window.localStorage.setItem(STORAGE_USER_KEY, trimmed);
+          } catch (err) {}
+          showRankSection(trimmed);
+        });
 
-// Built-in creepy monster — original canvas drawing (no external asset)
-function drawDefaultMonster(e) {
-  const w = e.w, h = e.h;
-  const agg = e.aggression || 0;
+        scoreForm.addEventListener('submit', function (e) {
+          e.preventDefault();
+          if (!currentPlayer) return;
 
-  // torso (tattered robe)
-  const robeGrad = ctx.createLinearGradient(0, 0, 0, h);
-  robeGrad.addColorStop(0, '#2a2432');
-  robeGrad.addColorStop(1, '#0e0c14');
-  ctx.fillStyle = robeGrad;
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.35, h * 0.45);
-  ctx.lineTo(-w * 0.5, h);
-  ctx.lineTo(-w * 0.35, h * 0.95);
-  ctx.lineTo(-w * 0.2, h);
-  ctx.lineTo(-w * 0.05, h * 0.95);
-  ctx.lineTo(w * 0.1, h);
-  ctx.lineTo(w * 0.3, h * 0.95);
-  ctx.lineTo(w * 0.5, h);
-  ctx.lineTo(w * 0.35, h * 0.45);
-  ctx.closePath();
-  ctx.fill();
+          var score = Number(scoreInput.value);
+          var stageRaw = stageInput.value;
+          var stage = stageRaw ? Number(stageRaw) : undefined;
 
-  // skinny arms
-  ctx.strokeStyle = '#d8cfae';
-  ctx.lineWidth = 4;
-  ctx.lineCap = 'round';
-  // left arm dangling
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.3, h * 0.5);
-  ctx.quadraticCurveTo(-w * 0.55, h * 0.65, -w * 0.45, h * 0.85);
-  ctx.stroke();
-  // right arm — stretches toward player when aggressive
-  ctx.beginPath();
-  ctx.moveTo(w * 0.3, h * 0.5);
-  const reach = 0.55 + agg * 0.25;
-  ctx.quadraticCurveTo(w * reach, h * 0.55, w * (reach + 0.1), h * (0.75 - agg * 0.15));
-  ctx.stroke();
-  // bony fingers on the stretching hand
-  ctx.lineWidth = 2;
-  const hx = w * (reach + 0.1), hy = h * (0.75 - agg * 0.15);
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(hx, hy);
-    ctx.lineTo(hx + (2 + i) * 1.5, hy + (i - 1) * 3 + 4);
-    ctx.stroke();
-  }
+          if (!Number.isFinite(score) || score <= 0) {
+            return;
+          }
 
-  // neck
-  ctx.fillStyle = '#d8cfae';
-  ctx.fillRect(-w * 0.08, h * 0.3, w * 0.16, h * 0.12);
+          var payload = {
+            playerName: currentPlayer,
+            score: score,
+            stage: Number.isFinite(stage || NaN) ? stage : undefined,
+          };
 
-  // head — elongated oval
-  const headGrad = ctx.createRadialGradient(-w * 0.1, h * 0.12, w * 0.05, 0, h * 0.2, w * 0.5);
-  headGrad.addColorStop(0, '#ece3c2');
-  headGrad.addColorStop(0.7, '#c2b896');
-  headGrad.addColorStop(1, '#7a6e52');
-  ctx.fillStyle = headGrad;
-  ctx.beginPath();
-  ctx.ellipse(0, h * 0.2, w * 0.32, h * 0.25, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // dark hollow eye sockets
-  ctx.fillStyle = '#000';
-  ctx.beginPath();
-  ctx.ellipse(-w * 0.12, h * 0.18, w * 0.08, h * 0.08, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(w * 0.12, h * 0.18, w * 0.08, h * 0.08, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // glowing pupils — intensify with aggression
-  const glow = agg > 0.3 ? `rgba(255,${Math.floor(80 - agg * 60)},${Math.floor(80 - agg * 70)},1)` : '#3a2a2a';
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(-w * 0.12, h * 0.19, w * 0.025, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(w * 0.12, h * 0.19, w * 0.025, 0, Math.PI * 2);
-  ctx.fill();
-
-  // wide crescent smile — gets wider with aggression
-  const smileW = w * (0.22 + agg * 0.08);
-  const smileY = h * 0.28;
-  ctx.strokeStyle = '#2a1010';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(-smileW, smileY);
-  ctx.quadraticCurveTo(0, smileY + h * (0.06 + agg * 0.04), smileW, smileY);
-  ctx.stroke();
-  // dark mouth interior
-  ctx.fillStyle = '#100808';
-  ctx.beginPath();
-  ctx.moveTo(-smileW + 1, smileY + 1);
-  ctx.quadraticCurveTo(0, smileY + h * (0.06 + agg * 0.04), smileW - 1, smileY + 1);
-  ctx.quadraticCurveTo(0, smileY + h * (0.03 + agg * 0.03), -smileW + 1, smileY + 1);
-  ctx.fill();
-  // jagged teeth
-  ctx.fillStyle = '#e8e2c8';
-  const teethN = 5;
-  for (let i = 0; i < teethN; i++) {
-    const tx = -smileW + (i + 0.5) * (smileW * 2 / teethN);
-    const th = 2 + (i % 2) * 2;
-    ctx.fillRect(tx - 1, smileY + 1, 2, th);
-  }
-
-  // ragged hair / shroud on top
-  ctx.fillStyle = '#1a1420';
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.3, h * 0.08);
-  ctx.quadraticCurveTo(-w * 0.2, -h * 0.05, 0, -h * 0.03);
-  ctx.quadraticCurveTo(w * 0.2, -h * 0.05, w * 0.3, h * 0.08);
-  ctx.quadraticCurveTo(w * 0.15, h * 0.02, 0, h * 0.04);
-  ctx.quadraticCurveTo(-w * 0.15, h * 0.02, -w * 0.3, h * 0.08);
-  ctx.fill();
-  // stray hair strands
-  for (let i = -3; i <= 3; i++) {
-    ctx.beginPath();
-    ctx.moveTo(i * w * 0.07, h * 0.02);
-    ctx.lineTo(i * w * 0.07 + (Math.random() - 0.5) * 3, -h * 0.08 - Math.abs(i) * 2);
-    ctx.strokeStyle = '#1a1420';
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-  }
-}
-
-function drawCloud(x, y, r) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.arc(x + r * 0.8, y + r * 0.2, r * 0.75, 0, Math.PI * 2);
-  ctx.arc(x - r * 0.7, y + r * 0.1, r * 0.65, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function lerpColor(c1, c2, t) {
-  const p1 = hexToRgb(c1), p2 = hexToRgb(c2);
-  const r = Math.floor(p1.r + (p2.r - p1.r) * t);
-  const g = Math.floor(p1.g + (p2.g - p1.g) * t);
-  const b = Math.floor(p1.b + (p2.b - p1.b) * t);
-  return `rgb(${r},${g},${b})`;
-}
-function hexToRgb(hex) {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-// -------------------------------------------------------------
-// HUD / UI
-// -------------------------------------------------------------
-const hudEl = document.getElementById('hud');
-const hpFillEl = document.getElementById('hpFill');
-const stageInfoEl = document.getElementById('stageInfo');
-const killCountEl = document.getElementById('killCount');
-const tintEl = document.getElementById('tint');
-const overlayEl = document.getElementById('overlay');
-const overlayTitle = document.getElementById('overlayTitle');
-const overlaySub = document.getElementById('overlaySub');
-const overlayBody = document.getElementById('overlayBody');
-const overlayControls = document.getElementById('overlayControls');
-const actionBtn = document.getElementById('actionBtn');
-const startDrop = document.getElementById('startDrop');
-const startFile = document.getElementById('startFile');
-const preview = document.getElementById('preview');
-const previewWrap = document.getElementById('previewWrap');
-const uploadPanel = document.getElementById('uploadPanel');
-const monsterFile = document.getElementById('monsterFile');
-
-function updateHUD() {
-  hpFillEl.style.width = (Player.hp / Player.maxHp * 100) + '%';
-  stageInfoEl.textContent = `STAGE ${Stage.current}`;
-  killCountEl.textContent = `Kills: ${Stage.kills} / ${Stage.targetKills}`;
-}
-
-function updateTint() {
-  // tint based on nearest enemy proximity
-  let minDist = Infinity;
-  for (const e of Enemy.list) {
-    if (e.dying) continue;
-    const dx = Player.x - e.x;
-    const dy = Player.y - e.y;
-    const d = Math.hypot(dx, dy);
-    if (d < minDist) minDist = d;
-  }
-  const prox = Math.max(0, Math.min(1, 1 - minDist / 400));
-  tintEl.style.background = `radial-gradient(circle at center, rgba(0,0,0,0) 30%, rgba(80,0,0,${prox * 0.45}) 100%)`;
-}
-
-// -------------------------------------------------------------
-// Image upload (both on start screen and HUD panel)
-// -------------------------------------------------------------
-function loadImageFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const img = new Image();
-    img.onload = () => {
-      Enemy.setImage(img);
-      preview.src = e.target.result;
-      previewWrap.classList.add('show');
-      startDrop.classList.add('ok');
-      uploadPanel.classList.add('ok');
-      actionBtn.disabled = false;
-      startDrop.querySelector('div:first-child').textContent = '✓ 준비됨';
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
-}
-startFile.addEventListener('change', e => { if (e.target.files[0]) loadImageFile(e.target.files[0]); });
-monsterFile.addEventListener('change', e => { if (e.target.files[0]) loadImageFile(e.target.files[0]); });
-['dragenter','dragover'].forEach(ev => startDrop.addEventListener(ev, e => { e.preventDefault(); startDrop.classList.add('drag'); }));
-['dragleave','drop'].forEach(ev => startDrop.addEventListener(ev, e => { e.preventDefault(); startDrop.classList.remove('drag'); }));
-startDrop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]); });
-window.addEventListener('paste', e => {
-  if (!e.clipboardData || Game.state === 'playing') return;
-  for (const item of e.clipboardData.items) {
-    if (item.type.startsWith('image/')) { loadImageFile(item.getAsFile()); break; }
-  }
-});
-
-// -------------------------------------------------------------
-// Game — state machine + loop
-// -------------------------------------------------------------
-const Game = {
-  state: 'start',     // 'start' | 'playing' | 'gameover' | 'stageclear'
-  lastT: 0,
-
-  showOverlay(title, sub, body, btnText) {
-    overlayTitle.textContent = title;
-    overlaySub.textContent = sub;
-    overlayBody.innerHTML = body;
-    actionBtn.textContent = btnText;
-    overlayEl.classList.remove('hidden');
-    hudEl.style.display = 'none';
-    uploadPanel.style.display = 'none';
-  },
-
-  hideOverlay() {
-    overlayEl.classList.add('hidden');
-    hudEl.style.display = '';
-    uploadPanel.style.display = '';
-  },
-
-  beginPlay() {
-    Audio.startMusic();
-    Player.reset();
-    Stage.start(1);
-    this.state = 'playing';
-    this.hideOverlay();
-    overlayControls.style.display = 'none';
-    startDrop.style.display = 'none';
-    previewWrap.style.display = 'none';
-  },
-
-  gameOver() {
-    this.state = 'gameover';
-    this.showOverlay('GAME OVER', '패 배', `Stage ${Stage.current} · ${Stage.kills} kills`, '다 시 시 작');
-    startDrop.style.display = 'none';
-    previewWrap.style.display = 'none';
-    overlayControls.style.display = 'none';
-    actionBtn.disabled = false;
-  },
-
-  stageClear() {
-    this.state = 'stageclear';
-    this.showOverlay(`STAGE ${Stage.current} CLEAR`, '통 과', `HP가 회복됩니다. 다음 스테이지는 더 강한 몬스터가 나옵니다.`, '다 음 스 테 이 지');
-    Player.hp = Player.maxHp;
-    startDrop.style.display = 'none';
-    previewWrap.style.display = 'none';
-    overlayControls.style.display = 'none';
-    actionBtn.disabled = false;
-  },
-
-  onActionButton() {
-    if (this.state === 'start') this.beginPlay();
-    else if (this.state === 'gameover') {
-      Stage.current = 1;
-      Player.reset();
-      this.beginPlay();
-    } else if (this.state === 'stageclear') {
-      Stage.start(Stage.current + 1);
-      Player.reset();
-      this.state = 'playing';
-      this.hideOverlay();
-    }
-  },
-
-  frame(t) {
-    const dt = Math.min(0.033, (t - this.lastT) / 1000 || 0.016);
-    this.lastT = t;
-
-    if (this.state === 'playing') {
-      Input.update(dt);
-      Player.update(dt);
-      Enemy.update(dt);
-      Effects.update(dt);
-      Camera.update();
-      updateHUD();
-      updateTint();
-    }
-
-    Renderer.draw();
-    requestAnimationFrame(this.frame.bind(this));
-  }
-};
-
-actionBtn.addEventListener('click', () => Game.onActionButton());
-window.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !actionBtn.disabled && overlayEl.classList.contains('hidden') === false) {
-    Game.onActionButton();
-  }
-});
-
-// start the render loop (state begins as 'start' — shows menu)
-requestAnimationFrame(Game.frame.bind(Game));
-</script>
-</body>
+          fetch('/api/rank', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+            .then(function (res) {
+              if (!res.ok) return;
+              scoreInput.value = '';
+              stageInput.value = '';
+              fetchRecords();
+            })
+            .catch(function () {
+              // 네트워크 오류 시 조용히 무시
+            });
+        });
+      })();
+    </script>
+  </body>
 </html>
