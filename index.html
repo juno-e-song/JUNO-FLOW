@@ -148,6 +148,60 @@
   #rankPopup {
     margin-top: 10px; color: #ffd24a; font-size: 14px; letter-spacing: 2px;
   }
+
+  /* 모바일 터치 컨트롤 */
+  #touchControls {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 10px 12px 14px;
+    display: none; /* 모바일에서만 보이도록 아래 미디어쿼리에서 켭니다 */
+    justify-content: space-between;
+    align-items: flex-end;
+    z-index: 5;
+    pointer-events: none;
+  }
+  #touchControls .touch-left,
+  #touchControls .touch-right {
+    display: flex;
+    gap: 8px;
+    pointer-events: auto;
+  }
+  .touch-btn {
+    min-width: 56px;
+    min-height: 56px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    touch-action: none;
+  }
+  .touch-btn:active {
+    background: rgba(255, 210, 74, 0.9);
+    color: #111;
+  }
+
+  @media (max-width: 768px) {
+    /* 모바일에서 터치 컨트롤 노출 및 오버레이 여백 축소 */
+    #touchControls {
+      display: flex;
+    }
+    #overlay {
+      padding: 16px;
+    }
+    #overlay h1 {
+      font-size: 40px;
+      letter-spacing: 4px;
+    }
+    #overlay .sub {
+      letter-spacing: 2px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -171,6 +225,18 @@
   <div>몬스터 이미지</div>
   <label for="monsterFile">클릭해서 변경</label>
   <input type="file" id="monsterFile" accept="image/*">
+</div>
+
+<!-- 모바일 터치 컨트롤 -->
+<div id="touchControls">
+  <div class="touch-left">
+    <button class="touch-btn" data-action="left">◀</button>
+    <button class="touch-btn" data-action="right">▶</button>
+  </div>
+  <div class="touch-right">
+    <button class="touch-btn" data-action="jump">JUMP</button>
+    <button class="touch-btn" data-action="attack">ATK</button>
+  </div>
 </div>
 
 <!-- Start / Game-over / Victory overlay -->
@@ -275,6 +341,51 @@ const Input = {
   consumeJump() { if (this.jumpBuffer > 0) { this.jumpBuffer = 0; return true; } return false; }
 };
 Input.init();
+
+// -------------------------------------------------------------
+// Touch controls → 키보드 입력으로 매핑 (모바일)
+// -------------------------------------------------------------
+(function setupTouchControls() {
+  const el = document.getElementById('touchControls');
+  if (!el) return;
+
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  if (!isTouchDevice) return;
+
+  function touchKeyDown(key) {
+    const k = key.toLowerCase();
+    if (!Input.held[k]) Input.pressed[k] = true;
+    if (k === ' ') Input.jumpBuffer = Config.jumpBufferTime;
+    Input.held[k] = true;
+  }
+  function touchKeyUp(key) {
+    const k = key.toLowerCase();
+    Input.held[k] = false;
+  }
+
+  el.querySelectorAll('[data-action]').forEach(btn => {
+    const action = btn.getAttribute('data-action');
+    let key;
+    if (action === 'left') key = 'ArrowLeft';
+    else if (action === 'right') key = 'ArrowRight';
+    else if (action === 'jump') key = ' ';
+    else if (action === 'attack') key = 'z';
+    if (!key) return;
+
+    const onDown = ev => {
+      ev.preventDefault();
+      touchKeyDown(key);
+    };
+    const onUp = ev => {
+      ev.preventDefault();
+      touchKeyUp(key);
+    };
+
+    btn.addEventListener('touchstart', onDown, { passive: false });
+    btn.addEventListener('touchend', onUp, { passive: false });
+    btn.addEventListener('touchcancel', onUp, { passive: false });
+  });
+})();
 
 // -------------------------------------------------------------
 // Audio — music loop + sfx (Web Audio synthesized)
@@ -623,701 +734,4 @@ const Enemy = {
       cc.putImageData(id, 0, 0);
       const out = new Image(); out.src = c.toDataURL('image/png');
       this.imageKeyed = out;
-    } catch (e) {}
-  },
-
-  spawn(x, y, hpMult = 1) {
-    this.list.push({
-      x, y, w: 48, h: 64,
-      vx: 0, vy: 0,
-      hp: Math.floor(40 * hpMult),
-      maxHp: Math.floor(40 * hpMult),
-      facing: -1,
-      onGround: false,
-      bob: Math.random() * 6,
-      ai: 'PATROL',
-      aiTimer: 1 + Math.random() * 2,
-      patrolDir: Math.random() < 0.5 ? -1 : 1,
-      aggression: 0,
-      starePose: 0,
-      speedBoost: 0,
-      hitFlash: 0,
-      dying: false,
-      dyingT: 0,
-      justHitCooldown: 0,
-    });
-  },
-
-  allDead() { return this.list.every(e => e.dying || e.hp <= 0); },
-
-  update(dt) {
-    for (const e of this.list) {
-      e.bob += dt;
-      if (e.hitFlash > 0) e.hitFlash -= dt;
-      if (e.justHitCooldown > 0) e.justHitCooldown -= dt;
-
-      if (e.dying) {
-        e.dyingT += dt;
-        e.vy += Config.gravity * 0.6;
-        e.y += e.vy;
-        e.x += e.vx * 0.5;
-        e.vx *= 0.94;
-        continue;
-      }
-
-      const dx = (Player.x + Player.w / 2) - (e.x + e.w / 2);
-      const dy = (Player.y + Player.h / 2) - (e.y + e.h / 2);
-      const dist = Math.hypot(dx, dy);
-
-      const onScreen = (e.x + e.w > Camera.x && e.x < Camera.x + W);
-      const lookingAt = onScreen && dist < 600 &&
-        ((Player.facing > 0 && dx > 0) || (Player.facing < 0 && dx < 0));
-
-      if (lookingAt) e.aggression = Math.min(1, e.aggression + dt * 0.2);
-      else e.aggression = Math.max(0, e.aggression - dt * 0.08);
-
-      e.aiTimer -= dt;
-      const farDist = 280;
-      const closeDist = 150;
-
-      if (e.ai === 'PATROL' && e.aiTimer <= 0 && Math.random() < 0.3) {
-        e.ai = 'STARE';
-        e.aiTimer = 0.8 + Math.random() * 1.0;
-        Audio.stare();
-      }
-
-      if (e.ai === 'STARE') {
-        e.vx = 0;
-        e.facing = dx < 0 ? -1 : 1;
-        e.starePose = 1;
-        if (e.aiTimer <= 0) {
-          e.ai = dist < farDist ? 'CHASE' : 'PATROL';
-          e.aiTimer = 1.5 + Math.random() * 2;
-        }
-      } else if (dist < farDist) {
-        e.ai = 'CHASE';
-        const baseSpeed = 1.6 + e.aggression * 2.5;
-        if (dist < closeDist && e.speedBoost <= 0 && Math.random() < 0.02) {
-          e.speedBoost = 0.4;
-          Audio.stare();
-        }
-        if (e.speedBoost > 0) { e.speedBoost -= dt; }
-        const speed = baseSpeed + (e.speedBoost > 0 ? 3 : 0);
-        e.vx = Math.sign(dx) * speed;
-        e.facing = e.vx < 0 ? -1 : 1;
-      } else {
-        e.ai = 'PATROL';
-        e.vx = e.patrolDir * 1.4;
-        e.facing = e.patrolDir;
-        if (e.aiTimer <= 0) {
-          e.patrolDir *= -1;
-          e.aiTimer = 2 + Math.random() * 3;
-        }
-      }
-
-      e.vy += Config.gravity;
-      if (e.vy > 16) e.vy = 16;
-      e.x += e.vx;
-      e.x = Math.max(0, Math.min(Config.worldWidth - e.w, e.x));
-      e.y += e.vy;
-      e.onGround = false;
-      let platformUnder = null;
-      for (const p of Level.platforms) {
-        if (e.vy >= 0 &&
-            e.x + e.w > p.x && e.x < p.x + p.w &&
-            e.y + e.h >= p.y && e.y + e.h <= p.y + Math.max(20, p.h)) {
-          e.y = p.y - e.h;
-          e.vy = 0;
-          e.onGround = true;
-          platformUnder = p;
-        }
-      }
-      if (e.ai === 'PATROL' && platformUnder) {
-        if (e.x < platformUnder.x + 4) { e.patrolDir = 1; }
-        if (e.x + e.w > platformUnder.x + platformUnder.w - 4) { e.patrolDir = -1; }
-      }
-
-      if (e.justHitCooldown <= 0 && rectsOverlap(e, Player)) {
-        Player.hit(Config.enemyContactDamage, e.x + e.w / 2);
-        e.justHitCooldown = 0.4;
-      }
-    }
-
-    this.list = this.list.filter(e => !(e.dying && e.dyingT > 1.2));
-  },
-
-  damage(e, dmg, fromFacing) {
-    e.hp -= dmg;
-    e.hitFlash = 0.15;
-    e.x += fromFacing * 18;
-    Audio.hit();
-    Camera.shakeNow(5);
-    const crit = Math.random() < 0.18;
-    Effects.spawnDamageNum(e.x + e.w / 2, e.y, crit ? Math.floor(dmg * 1.5) : dmg, crit);
-    if (e.hp <= 0 && !e.dying) {
-      e.dying = true;
-      e.dyingT = 0;
-      e.vy = -6;
-      e.vx = fromFacing * 3;
-      Audio.die();
-      Effects.spawnBurst(e.x + e.w / 2, e.y + e.h / 2, '#e8c547', 14);
-      Stage.onEnemyKilled();
-    }
-  },
-
-  draw() {
-    for (const e of this.list) {
-      const sx = e.x - Camera.x + Camera.offsetX();
-      const sy = e.y + Camera.offsetY();
-      if (sx + e.w < -20 || sx > W + 20) continue;
-      const bob = Math.sin(e.bob * 3) * 2;
-      const shake = (e.ai === 'STARE' || e.aggression > 0.5) ? (Math.random() - 0.5) * 1.5 : 0;
-
-      ctx.save();
-      if (e.dying) ctx.globalAlpha = Math.max(0, 1 - e.dyingT / 1.2);
-      if (e.hitFlash > 0) ctx.filter = 'brightness(2.5)';
-
-      if (e.aggression > 0.4) {
-        const aura = ctx.createRadialGradient(
-          sx + e.w / 2, sy + e.h / 2, 10,
-          sx + e.w / 2, sy + e.h / 2, e.w * 1.3
-        );
-        aura.addColorStop(0, `rgba(180,0,0,${0.2 * e.aggression})`);
-        aura.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = aura;
-        ctx.fillRect(sx - e.w, sy - e.h, e.w * 3, e.h * 3);
-      }
-
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.beginPath();
-      ctx.ellipse(sx + e.w / 2, sy + e.h, e.w * 0.45, 4, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (this.imageReady && !this.useDefault) {
-        const src = this.imageKeyed && this.imageKeyed.complete ? this.imageKeyed : this.image;
-        ctx.translate(sx + e.w / 2 + shake, sy + bob + shake);
-        ctx.scale(e.facing < 0 ? -1 : 1, 1);
-        if (e.dying) ctx.rotate((e.facing < 0 ? 1 : -1) * e.dyingT * 1.5);
-        const ar = src.width / src.height;
-        const h = e.h;
-        const w = h * ar;
-        ctx.drawImage(src, -w / 2, 0, w, h);
-      } else {
-        ctx.translate(sx + e.w / 2 + shake, sy + bob + shake);
-        ctx.scale(e.facing < 0 ? -1 : 1, 1);
-        if (e.dying) ctx.rotate((e.facing < 0 ? 1 : -1) * e.dyingT * 1.5);
-        drawDefaultMonster(e);
-      }
-
-      ctx.restore();
-      ctx.filter = 'none';
-      ctx.globalAlpha = 1;
-
-      if (!e.dying && e.hp < e.maxHp) {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(sx, sy - 8, e.w, 4);
-        ctx.fillStyle = '#ff5050';
-        ctx.fillRect(sx + 1, sy - 7, (e.w - 2) * (e.hp / e.maxHp), 2);
-      }
-    }
-  }
-};
-
-const Combat = {
-  performAttack() {
-    const box = Player.attackBox();
-    for (const e of Enemy.list) {
-      if (e.dying) continue;
-      if (rectsOverlap(box, e)) {
-        const crit = Math.random() < 0.2;
-        Enemy.damage(e, crit ? Math.floor(Config.attackDamage * 1.5) : Config.attackDamage, Player.facing);
-      }
-    }
-  }
-};
-
-// 런 점수
-let runScore = 0;
-
-const Stage = {
-  current: 1,
-  targetKills: 5,
-  kills: 0,
-  hpMult: 1,
-
-  start(n) {
-    this.current = n;
-    this.hpMult = 1 + (n - 1) * 0.35;
-    this.targetKills = 4 + n;
-    this.kills = 0;
-    Enemy.list.length = 0;
-    const positions = [
-      [500, 420], [800, 420], [1200, 420], [1600, 420],
-      [2000, 420], [2400, 420], [2800, 420], [3200, 420],
-      [520, 300], [1020, 380], [1870, 340], [2420, 360],
-    ];
-    const numSpawn = Math.min(positions.length, this.targetKills + 2);
-    for (let i = 0; i < numSpawn; i++) {
-      Enemy.spawn(positions[i][0], positions[i][1], this.hpMult);
-    }
-    updateHUD();
-    updateScoreHUD();
-  },
-  onEnemyKilled() {
-    this.kills++;
-    runScore += 100; // 킬당 100점
-    updateHUD();
-    updateScoreHUD();
-    if (this.kills >= this.targetKills) {
-      setTimeout(() => Game.stageClear(), 800);
-    }
-  }
-};
-
-const Renderer = {
-  draw() {
-    const nightAmt = Math.min(1, (Stage.current - 1) * 0.25);
-    const topC = lerpColor('#7ec8e8', '#1a1830', nightAmt);
-    const botC = lerpColor('#c7e8c0', '#2a2530', nightAmt);
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, topC);
-    g.addColorStop(1, botC);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-
-    if (nightAmt > 0.2) {
-      ctx.fillStyle = `rgba(255,255,220,${nightAmt})`;
-      ctx.beginPath(); ctx.arc(W - 140, 100, 36, 0, Math.PI * 2); ctx.fill();
-    }
-
-    ctx.fillStyle = lerpColor('#8fb08a', '#2a3a2a', nightAmt);
-    const par1 = Camera.x * 0.15;
-    for (let i = -1; i < Math.ceil(W / 400) + 2; i++) {
-      const hx = i * 400 - (par1 % 400);
-      ctx.beginPath();
-      ctx.moveTo(hx, H);
-      ctx.quadraticCurveTo(hx + 200, H - 240, hx + 400, H);
-      ctx.fill();
-    }
-
-    ctx.fillStyle = lerpColor('#6f9a6b', '#1c2a1c', nightAmt);
-    const par2 = Camera.x * 0.3;
-    for (let i = -1; i < Math.ceil(W / 280) + 2; i++) {
-      const hx = i * 280 - (par2 % 280);
-      ctx.beginPath();
-      ctx.moveTo(hx, H);
-      ctx.quadraticCurveTo(hx + 140, H - 180, hx + 280, H);
-      ctx.fill();
-    }
-
-    ctx.fillStyle = `rgba(255,255,255,${0.8 - nightAmt * 0.6})`;
-    const par3 = Camera.x * 0.08;
-    for (let i = 0; i < 10; i++) {
-      const x = ((i * 400 - par3) % (W + 400)) - 100;
-      const y = 50 + (i * 41) % 120;
-      drawCloud(x, y, 28 + (i * 7) % 22);
-    }
-
-    for (const p of Level.platforms) {
-      const sx = p.x - Camera.x + Camera.offsetX();
-      const sy = p.y + Camera.offsetY();
-      if (sx + p.w < 0 || sx > W) continue;
-      ctx.fillStyle = lerpColor('#6ac46a', '#2e4a2e', nightAmt);
-      ctx.fillRect(sx, sy, p.w, 6);
-      ctx.fillStyle = lerpColor('#8b5a2b', '#3a2816', nightAmt);
-      ctx.fillRect(sx, sy + 6, p.w, p.h - 6);
-      ctx.fillStyle = lerpColor('#4ea04e', '#1a2a1a', nightAmt);
-      for (let i = 8; i < p.w - 8; i += 24) {
-        ctx.fillRect(sx + i, sy - 3, 2, 4);
-        ctx.fillRect(sx + i + 2, sy - 2, 2, 3);
-      }
-    }
-
-    Enemy.draw();
-    Player.draw();
-    Effects.draw();
-  }
-};
-
-function drawDefaultMonster(e) {
-  const w = e.w, h = e.h;
-  const agg = e.aggression || 0;
-  const robeGrad = ctx.createLinearGradient(0, 0, 0, h);
-  robeGrad.addColorStop(0, '#2a2432');
-  robeGrad.addColorStop(1, '#0e0c14');
-  ctx.fillStyle = robeGrad;
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.35, h * 0.45);
-  ctx.lineTo(-w * 0.5, h);
-  ctx.lineTo(-w * 0.35, h * 0.95);
-  ctx.lineTo(-w * 0.2, h);
-  ctx.lineTo(-w * 0.05, h * 0.95);
-  ctx.lineTo(w * 0.1, h);
-  ctx.lineTo(w * 0.3, h * 0.95);
-  ctx.lineTo(w * 0.5, h);
-  ctx.lineTo(w * 0.35, h * 0.45);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle = '#d8cfae';
-  ctx.lineWidth = 4;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.3, h * 0.5);
-  ctx.quadraticCurveTo(-w * 0.55, h * 0.65, -w * 0.45, h * 0.85);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(w * 0.3, h * 0.5);
-  const reach = 0.55 + agg * 0.25;
-  ctx.quadraticCurveTo(w * reach, h * 0.55, w * (reach + 0.1), h * (0.75 - agg * 0.15));
-  ctx.stroke();
-  ctx.lineWidth = 2;
-  const hx = w * (reach + 0.1), hy = h * (0.75 - agg * 0.15);
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(hx, hy);
-    ctx.lineTo(hx + (2 + i) * 1.5, hy + (i - 1) * 3 + 4);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = '#d8cfae';
-  ctx.fillRect(-w * 0.08, h * 0.3, w * 0.16, h * 0.12);
-
-  const headGrad = ctx.createRadialGradient(-w * 0.1, h * 0.12, w * 0.05, 0, h * 0.2, w * 0.5);
-  headGrad.addColorStop(0, '#ece3c2');
-  headGrad.addColorStop(0.7, '#c2b896');
-  headGrad.addColorStop(1, '#7a6e52');
-  ctx.fillStyle = headGrad;
-  ctx.beginPath();
-  ctx.ellipse(0, h * 0.2, w * 0.32, h * 0.25, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#000';
-  ctx.beginPath();
-  ctx.ellipse(-w * 0.12, h * 0.18, w * 0.08, h * 0.08, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(w * 0.12, h * 0.18, w * 0.08, h * 0.08, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const glow = agg > 0.3 ? `rgba(255,${Math.floor(80 - agg * 60)},${Math.floor(80 - agg * 70)},1)` : '#3a2a2a';
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(-w * 0.12, h * 0.19, w * 0.025, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(w * 0.12, h * 0.19, w * 0.025, 0, Math.PI * 2);
-  ctx.fill();
-
-  const smileW = w * (0.22 + agg * 0.08);
-  const smileY = h * 0.28;
-  ctx.strokeStyle = '#2a1010';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(-smileW, smileY);
-  ctx.quadraticCurveTo(0, smileY + h * (0.06 + agg * 0.04), smileW, smileY);
-  ctx.stroke();
-  ctx.fillStyle = '#100808';
-  ctx.beginPath();
-  ctx.moveTo(-smileW + 1, smileY + 1);
-  ctx.quadraticCurveTo(0, smileY + h * (0.06 + agg * 0.04), smileW - 1, smileY + 1);
-  ctx.quadraticCurveTo(0, smileY + h * (0.03 + agg * 0.03), -smileW + 1, smileY + 1);
-  ctx.fill();
-  ctx.fillStyle = '#e8e2c8';
-  const teethN = 5;
-  for (let i = 0; i < teethN; i++) {
-    const tx = -smileW + (i + 0.5) * (smileW * 2 / teethN);
-    const th = 2 + (i % 2) * 2;
-    ctx.fillRect(tx - 1, smileY + 1, 2, th);
-  }
-
-  ctx.fillStyle = '#1a1420';
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.3, h * 0.08);
-  ctx.quadraticCurveTo(-w * 0.2, -h * 0.05, 0, -h * 0.03);
-  ctx.quadraticCurveTo(w * 0.2, -h * 0.05, w * 0.3, h * 0.08);
-  ctx.quadraticCurveTo(w * 0.15, h * 0.02, 0, h * 0.04);
-  ctx.quadraticCurveTo(-w * 0.15, h * 0.02, -w * 0.3, h * 0.08);
-  ctx.fill();
-  for (let i = -3; i <= 3; i++) {
-    ctx.beginPath();
-    ctx.moveTo(i * w * 0.07, h * 0.02);
-    ctx.lineTo(i * w * 0.07 + (Math.random() - 0.5) * 3, -h * 0.08 - Math.abs(i) * 2);
-    ctx.strokeStyle = '#1a1420';
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-  }
-}
-
-function drawCloud(x, y, r) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.arc(x + r * 0.8, y + r * 0.2, r * 0.75, 0, Math.PI * 2);
-  ctx.arc(x - r * 0.7, y + r * 0.1, r * 0.65, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function lerpColor(c1, c2, t) {
-  const p1 = hexToRgb(c1), p2 = hexToRgb(c2);
-  const r = Math.floor(p1.r + (p2.r - p1.r) * t);
-  const g = Math.floor(p1.g + (p2.g - p1.g) * t);
-  const b = Math.floor(p1.b + (p2.b - p1.b) * t);
-  return `rgb(${r},${g},${b})`;
-}
-function hexToRgb(hex) {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-// -------------------------------------------------------------
-// HUD / UI + 랭킹 전송용 닉네임/점수
-// -------------------------------------------------------------
-const hudEl = document.getElementById('hud');
-const hpFillEl = document.getElementById('hpFill');
-const stageInfoEl = document.getElementById('stageInfo');
-const killCountEl = document.getElementById('killCount');
-const hudNameEl = document.getElementById('hudName');
-const hudScoreEl = document.getElementById('hudScore');
-const tintEl = document.getElementById('tint');
-const overlayEl = document.getElementById('overlay');
-const overlayTitle = document.getElementById('overlayTitle');
-const overlaySub = document.getElementById('overlaySub');
-const overlayBody = document.getElementById('overlayBody');
-const overlayControls = document.getElementById('overlayControls');
-const actionBtn = document.getElementById('actionBtn');
-const startDrop = document.getElementById('startDrop');
-const startFile = document.getElementById('startFile');
-const preview = document.getElementById('preview');
-const previewWrap = document.getElementById('previewWrap');
-const uploadPanel = document.getElementById('uploadPanel');
-const monsterFile = document.getElementById('monsterFile');
-const nameInputEl = document.getElementById('nameInput');
-
-let playerName = '';
-
-function updateHUD() {
-  hpFillEl.style.width = (Player.hp / Player.maxHp * 100) + '%';
-  stageInfoEl.textContent = `STAGE ${Stage.current}`;
-  killCountEl.textContent = `Kills: ${Stage.kills} / ${Stage.targetKills}`;
-}
-
-function updateScoreHUD() {
-  if (hudScoreEl) hudScoreEl.textContent = 'SCORE: ' + runScore;
-}
-
-function updateTint() {
-  let minDist = Infinity;
-  for (const e of Enemy.list) {
-    if (e.dying) continue;
-    const dx = Player.x - e.x;
-    const dy = Player.y - e.y;
-    const d = Math.hypot(dx, dy);
-    if (d < minDist) minDist = d;
-  }
-  const prox = Math.max(0, Math.min(1, 1 - minDist / 400));
-  tintEl.style.background = `radial-gradient(circle at center, rgba(0,0,0,0) 30%, rgba(80,0,0,${prox * 0.45}) 100%)`;
-}
-
-function loadPlayerNameFromStorage() {
-  try {
-    const saved = window.localStorage.getItem(STORAGE_USER_KEY);
-    if (saved && saved.trim()) {
-      playerName = saved.trim();
-      if (nameInputEl) nameInputEl.value = playerName;
-      if (hudNameEl) hudNameEl.textContent = 'PLAYER: ' + playerName;
-      return true;
-    }
-  } catch (e) {}
-  return false;
-}
-
-function ensurePlayerName() {
-  if (playerName && playerName.trim()) return true;
-  const v = (nameInputEl && nameInputEl.value ? nameInputEl.value : '').trim();
-  if (!v) return false;
-  playerName = v;
-  try { window.localStorage.setItem(STORAGE_USER_KEY, playerName); } catch (e) {}
-  if (hudNameEl) hudNameEl.textContent = 'PLAYER: ' + playerName;
-  return true;
-}
-
-function submitScoreToServer(finalScore) {
-  if (!ensurePlayerName()) return;
-  if (!Number.isFinite(finalScore) || finalScore <= 0) return;
-
-  const payload = { playerName, score: finalScore };
-  fetch(apiUrl('/api/rank'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }).catch(() => {
-    // 네트워크 에러는 조용히 무시
-  });
-}
-
-// -------------------------------------------------------------
-// Image upload (start & HUD)
-// -------------------------------------------------------------
-function loadImageFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const img = new Image();
-    img.onload = () => {
-      Enemy.setImage(img);
-      preview.src = e.target.result;
-      previewWrap.classList.add('show');
-      startDrop.classList.add('ok');
-      uploadPanel.classList.add('ok');
-      actionBtn.disabled = !nameInputEl.value.trim();
-      startDrop.querySelector('div:first-child').textContent = '✓ 준비됨';
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
-}
-startFile.addEventListener('change', e => { if (e.target.files[0]) loadImageFile(e.target.files[0]); });
-monsterFile.addEventListener('change', e => { if (e.target.files[0]) loadImageFile(e.target.files[0]); });
-['dragenter','dragover'].forEach(ev => startDrop.addEventListener(ev, e => { e.preventDefault(); startDrop.classList.add('drag'); }));
-['dragleave','drop'].forEach(ev => startDrop.addEventListener(ev, e => { e.preventDefault(); startDrop.classList.remove('drag'); }));
-startDrop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]); });
-window.addEventListener('paste', e => {
-  if (!e.clipboardData || Game.state === 'playing') return;
-  for (const item of e.clipboardData.items) {
-    if (item.type.startsWith('image/')) { loadImageFile(item.getAsFile()); break; }
-  }
-});
-
-// -------------------------------------------------------------
-// Game — state machine + loop + 랭킹 연동
-// -------------------------------------------------------------
-const Game = {
-  state: 'start',
-  lastT: 0,
-
-  showOverlay(title, sub, body, btnText) {
-    overlayTitle.textContent = title;
-    overlaySub.textContent = sub;
-    overlayBody.innerHTML = body;
-    actionBtn.textContent = btnText;
-    overlayEl.classList.remove('hidden');
-    hudEl.style.display = 'none';
-    uploadPanel.style.display = 'none';
-  },
-
-  hideOverlay() {
-    overlayEl.classList.add('hidden');
-    hudEl.style.display = '';
-    uploadPanel.style.display = '';
-  },
-
-  beginPlay() {
-    Audio.startMusic();
-    Player.reset();
-    runScore = 0;
-    updateScoreHUD();
-    Stage.start(1);
-    this.state = 'playing';
-    this.hideOverlay();
-    overlayControls.style.display = 'none';
-    startDrop.style.display = 'none';
-    previewWrap.style.display = 'none';
-  },
-
-  gameOver() {
-    const finalScore = Math.max(0, runScore);
-    this.state = 'gameover';
-    this.showOverlay(
-      'GAME OVER',
-      '패 배',
-      `Stage ${Stage.current} · ${Stage.kills} kills<br>Score ${finalScore}`,
-      '다 시 시 작'
-    );
-    startDrop.style.display = 'none';
-    previewWrap.style.display = 'none';
-    overlayControls.style.display = 'none';
-    actionBtn.disabled = false;
-    submitScoreToServer(finalScore);
-  },
-
-  stageClear() {
-    this.state = 'stageclear';
-    runScore += Stage.current * 200; // 스테이지 클리어 보너스
-    updateScoreHUD();
-    this.showOverlay(
-      `STAGE ${Stage.current} CLEAR`,
-      '통 과',
-      `HP가 회복됩니다. 다음 스테이지는 더 강한 몬스터가 나옵니다.<br>Score ${runScore}`,
-      '다 음 스 테 이 지'
-    );
-    Player.hp = Player.maxHp;
-    startDrop.style.display = 'none';
-    previewWrap.style.display = 'none';
-    overlayControls.style.display = 'none';
-    actionBtn.disabled = false;
-  },
-
-  onActionButton() {
-    if (this.state === 'start') {
-      if (!ensurePlayerName()) {
-        alert('닉네임을 먼저 입력해 주세요.');
-        if (nameInputEl) nameInputEl.focus();
-        return;
-      }
-      this.beginPlay();
-    } else if (this.state === 'gameover') {
-      Stage.current = 1;
-      Player.reset();
-      this.beginPlay();
-    } else if (this.state === 'stageclear') {
-      Stage.start(Stage.current + 1);
-      Player.reset();
-      this.state = 'playing';
-      this.hideOverlay();
-    }
-  },
-
-  frame(t) {
-    const dt = Math.min(0.033, (t - this.lastT) / 1000 || 0.016);
-    this.lastT = t;
-
-    if (this.state === 'playing') {
-      Input.update(dt);
-      Player.update(dt);
-      Enemy.update(dt);
-      Effects.update(dt);
-      Camera.update();
-      updateHUD();
-      updateTint();
-    }
-
-    Renderer.draw();
-    requestAnimationFrame(this.frame.bind(this));
-  }
-};
-
-actionBtn.addEventListener('click', () => Game.onActionButton());
-window.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !actionBtn.disabled && overlayEl.classList.contains('hidden') === false) {
-    Game.onActionButton();
-  }
-});
-
-// 닉네임 복원 + 입력에 따라 시작 버튼 활성화
-if (loadPlayerNameFromStorage()) {
-  actionBtn.disabled = false;
-} else {
-  actionBtn.disabled = true;
-}
-if (nameInputEl) {
-  nameInputEl.addEventListener('input', () => {
-    const hasName = !!nameInputEl.value.trim();
-    actionBtn.disabled = !hasName;
-  });
-}
-
-// 루프 시작
-requestAnimationFrame(Game.frame.bind(Game));
-</script>
-</body>
-</html>
+    } catch (e)
