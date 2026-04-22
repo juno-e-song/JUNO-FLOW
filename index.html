@@ -173,27 +173,43 @@
   #debugPanel {
     margin-top: 10px; padding-top: 8px;
     border-top: 1px dashed #333;
-    font-size: 10px; color: #888; letter-spacing: 0.5px;
+    font-size: 11px; color: #888; letter-spacing: 0.5px;
     line-height: 1.5;
   }
   #debugPanel .row { word-break: break-all; }
-  #debugPanel #dbgError { color: #ff8a8a; min-height: 0; }
-  #debugPanel #dbgError:empty { display: none; }
-  #resyncBtn {
+  #debugPanel #dbgError {
+    display: none;
     margin-top: 6px;
+    padding: 8px 10px;
+    background: rgba(255, 90, 90, 0.10);
+    border: 1px solid rgba(255, 90, 90, 0.45);
+    border-radius: 4px;
+    color: #ffb0b0;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    line-height: 1.45;
+    letter-spacing: 0;
+    word-break: break-word;
+    -webkit-user-select: text; user-select: text;
+  }
+  #debugPanel #dbgError.show { display: block; }
+  #resyncBtn, #copyErrBtn {
+    margin-top: 8px; margin-right: 6px;
     background: rgba(255,210,74,0.12);
     color: #ffd24a;
     border: 1px solid rgba(255,210,74,0.4);
     border-radius: 4px;
-    padding: 4px 10px;
+    padding: 6px 12px;
     font-family: inherit;
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: 2px;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
+  #copyErrBtn { color: #ffb0b0; border-color: rgba(255,90,90,0.45); background: rgba(255,90,90,0.08); }
   #resyncBtn:hover { background: rgba(255,210,74,0.22); }
-  #resyncBtn:disabled { opacity: 0.5; cursor: default; }
+  #copyErrBtn:hover { background: rgba(255,90,90,0.15); }
+  #resyncBtn:disabled, #copyErrBtn:disabled { opacity: 0.5; cursor: default; }
 
   /* ============ Mobile touch controls ============ */
   #touchControls {
@@ -353,8 +369,11 @@
     </table>
     <div id="debugPanel">
       <div class="row"><span id="dbgLocal">로컬 0개</span> · <span id="dbgRemote">서버 ?</span> · <span id="dbgTime">마지막 싱크 —</span></div>
-      <div class="row" id="dbgError"></div>
-      <button id="resyncBtn" type="button">재동기화</button>
+      <div id="dbgError"></div>
+      <div>
+        <button id="resyncBtn" type="button">재동기화</button>
+        <button id="copyErrBtn" type="button" style="display:none">에러 복사</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1414,58 +1433,83 @@ const REMOTE = {
     ]);
   },
 
+  async _fetchOnce() {
+    const res = await this._race(
+      window.fetch(this._base() + '/latest', { headers: this._headers(), mode: 'cors', cache: 'no-store' }),
+      12000, 'GET'
+    );
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err = new Error(`HTTP ${res.status}: ${txt.slice(0, 180)}`);
+      err._status = res.status;
+      throw err;
+    }
+    const j = await this._race(res.json(), 6000, 'GET-json');
+    const record = (j && j.record) ? j.record : j;
+    const list = (record && Array.isArray(record.leaderboard)) ? record.leaderboard :
+                 (Array.isArray(record) ? record : []);
+    return Array.isArray(list) ? list : [];
+  },
   async fetch() {
     if (!this.enabled) return null;
     this.lastError = '';
-    try {
-      console.log('[JUNO FLOW] GET', this._base() + '/latest');
-      const res = await this._race(
-        window.fetch(this._base() + '/latest', { headers: this._headers(), mode: 'cors', cache: 'no-store' }),
-        7000, 'GET'
-      );
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        this.lastError = `HTTP ${res.status}: ${txt.slice(0, 140)}`;
-        console.warn('[JUNO FLOW] GET not ok:', this.lastError);
-        return null;
+    const attempts = 3;
+    for (let i = 1; i <= attempts; i++) {
+      try {
+        console.log('[JUNO FLOW] GET attempt', i, this._base() + '/latest');
+        const list = await this._fetchOnce();
+        console.log('[JUNO FLOW] GET ok, entries =', list.length);
+        this.lastError = '';
+        return list;
+      } catch (e) {
+        const msg = (e && (e.name ? e.name + ': ' : '') + (e.message || e)) || 'unknown';
+        this.lastError = `GET #${i}/${attempts} ${msg}`;
+        console.warn('[JUNO FLOW] GET error:', this.lastError);
+        if (e && e._status && (e._status === 400 || e._status === 401 || e._status === 403 || e._status === 404)) break;
+        if (i < attempts) await new Promise(r => setTimeout(r, 600 * i));
       }
-      const j = await this._race(res.json(), 4000, 'GET-json');
-      const record = (j && j.record) ? j.record : j;
-      const list = (record && Array.isArray(record.leaderboard)) ? record.leaderboard :
-                   (Array.isArray(record) ? record : []);
-      console.log('[JUNO FLOW] GET ok, entries =', list.length);
-      return Array.isArray(list) ? list : [];
-    } catch (e) {
-      this.lastError = (e && (e.name ? e.name + ': ' : '') + (e.message || e)) || 'unknown';
-      console.warn('[JUNO FLOW] GET error:', this.lastError);
-      return null;
     }
+    return null;
+  },
+  async _pushOnce(entries) {
+    const res = await this._race(
+      window.fetch(this._base(), {
+        method: 'PUT', headers: this._headers(), mode: 'cors', cache: 'no-store',
+        body: JSON.stringify({ leaderboard: entries })
+      }),
+      7000, 'PUT'
+    );
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err = new Error(`HTTP ${res.status}: ${txt.slice(0, 180)}`);
+      err._status = res.status;
+      throw err;
+    }
+    return true;
   },
   async push(entries) {
     if (!this.enabled) return false;
     this.lastError = '';
-    try {
-      console.log('[JUNO FLOW] PUT', this._base(), 'entries =', entries.length);
-      const res = await this._race(
-        window.fetch(this._base(), {
-          method: 'PUT', headers: this._headers(), mode: 'cors', cache: 'no-store',
-          body: JSON.stringify({ leaderboard: entries })
-        }),
-        7000, 'PUT'
-      );
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        this.lastError = `HTTP ${res.status}: ${txt.slice(0, 140)}`;
-        console.warn('[JUNO FLOW] PUT not ok:', this.lastError);
-        return false;
+    const attempts = 3;
+    for (let i = 1; i <= attempts; i++) {
+      try {
+        console.log('[JUNO FLOW] PUT attempt', i, this._base(), 'entries =', entries.length);
+        await this._pushOnce(entries);
+        console.log('[JUNO FLOW] PUT ok');
+        this.lastError = '';
+        return true;
+      } catch (e) {
+        const msg = (e && (e.name ? e.name + ': ' : '') + (e.message || e)) || 'unknown';
+        this.lastError = `PUT #${i}/${attempts} ${msg}`;
+        console.warn('[JUNO FLOW] PUT error:', this.lastError);
+        // don't retry on auth/bad-request type errors
+        if (e && e._status && (e._status === 400 || e._status === 401 || e._status === 403 || e._status === 404)) break;
+        if (i < attempts) {
+          await new Promise(r => setTimeout(r, 500 * i)); // 500ms, 1s backoff
+        }
       }
-      console.log('[JUNO FLOW] PUT ok');
-      return true;
-    } catch (e) {
-      this.lastError = (e && (e.name ? e.name + ': ' : '') + (e.message || e)) || 'unknown';
-      console.warn('[JUNO FLOW] PUT error:', this.lastError);
-      return false;
     }
+    return false;
   }
 };
 
@@ -1487,10 +1531,16 @@ const Leaderboard = {
   load() {
     try {
       const raw = localStorage.getItem(this.KEY);
-      this.entries = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(this.entries)) this.entries = [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      this.entries = Array.isArray(parsed) ? parsed : [];
     } catch (_) {
       this.entries = Array.isArray(this._mem.board) ? this._mem.board.slice() : [];
+    }
+    // Clean up legacy duplicates from before the best-per-name rule existed.
+    const before = this.entries.length;
+    this.entries = this._merge(this.entries, []);
+    if (this.entries.length !== before) {
+      try { this.save(); } catch (_) {}
     }
   },
   save() {
@@ -1505,33 +1555,53 @@ const Leaderboard = {
     this._mem.user = name;
     try { localStorage.setItem(this.USER_KEY, name); } catch (_) {}
   },
+  // Merge two lists into a "best per user" ranking.
+  // Same name (case-insensitive) → only keep the entry with the highest score.
+  // Tie-breaks: higher stage, then earlier date.
   _merge(a, b) {
-    const seen = new Set();
-    const out = [];
+    const byName = new Map(); // lowercase name -> entry
+    const isBetter = (cand, cur) => {
+      if (cand.score !== cur.score) return cand.score > cur.score;
+      if (cand.stage !== cur.stage) return cand.stage > cur.stage;
+      return cand.date < cur.date; // earlier date wins ties
+    };
     for (const e of [...(a || []), ...(b || [])]) {
       if (!e || typeof e !== 'object') continue;
-      const k = `${e.name}|${e.score}|${e.stage}|${e.date}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push({
-        name: String(e.name || 'Player').slice(0, 16),
+      const name = String(e.name || 'Player').slice(0, 16);
+      const key  = name.toLowerCase();
+      const cand = {
+        name,
         score: e.score | 0,
         stage: e.stage | 0,
         kills: e.kills | 0,
-        date: e.date | 0
-      });
+        date:  e.date  | 0
+      };
+      const cur = byName.get(key);
+      if (!cur || isBetter(cand, cur)) byName.set(key, cand);
     }
+    const out = [...byName.values()];
     out.sort((a, b) => b.score - a.score || b.stage - a.stage || a.date - b.date);
     return out.slice(0, this.MAX);
   },
   submit(name, score, stage, kills) {
-    const entry = { name: (name || 'Player').slice(0, 16), score: score | 0, stage: stage | 0, kills: kills | 0, date: Date.now() };
+    const cleanName = (name || 'Player').slice(0, 16);
+    const entry = { name: cleanName, score: score | 0, stage: stage | 0, kills: kills | 0, date: Date.now() };
+    // find previous personal best (if any) BEFORE merge
+    const key = cleanName.toLowerCase();
+    const prev = this.entries.find(e => e && e.name && e.name.toLowerCase() === key);
+    const prevBest = prev ? prev.score : -1;
+    const improved = (entry.score | 0) > prevBest;
+
     this.entries = this._merge(this.entries, [entry]);
     this.save();
-    const localRank = this.entries.indexOf(entry) + 1;
+
+    // rank is index of the best entry for this name (which may be old or new)
+    const idx = this.entries.findIndex(e => e && e.name && e.name.toLowerCase() === key);
+    const localRank = idx + 1;
+
     // queued remote sync — won't drop subsequent submits
     this._queueSync();
-    return localRank;
+    return { rank: localRank, improved, prevBest: prevBest > 0 ? prevBest : 0 };
   },
   _queueSync() {
     if (!REMOTE.enabled) return;
@@ -1547,17 +1617,38 @@ const Leaderboard = {
       // loop until no more pending syncs arrived during the previous round
       while (this._pendingSync) {
         this._pendingSync = false;
-        const remote = await REMOTE.fetch();
+        let remote, merged, ok;
+        try {
+          remote = await REMOTE.fetch();
+        } catch (e) {
+          REMOTE.lastError = 'fetch threw: ' + (e && e.message || e);
+          setSyncStatus('fail'); updateDebug(); return;
+        }
         if (!remote) { setSyncStatus('fail'); updateDebug(); return; }
-        const merged = this._merge(remote, this.entries);
-        const ok = await REMOTE.push(merged);
+        try {
+          merged = this._merge(remote, this.entries);
+        } catch (e) {
+          REMOTE.lastError = 'merge threw: ' + (e && e.message || e);
+          setSyncStatus('fail'); updateDebug(); return;
+        }
+        try {
+          ok = await REMOTE.push(merged);
+        } catch (e) {
+          REMOTE.lastError = 'push threw: ' + (e && e.message || e);
+          setSyncStatus('fail'); updateDebug(); return;
+        }
         if (!ok) { setSyncStatus('fail'); updateDebug(); return; }
         this.entries = merged;
-        this.save();
-        this.render(Session.username);
+        try { this.save(); } catch (e) { REMOTE.lastError = 'save threw: ' + (e && e.message || e); }
+        try { this.render(Session && Session.username); } catch (e) { REMOTE.lastError = 'render threw: ' + (e && e.message || e); }
         this._lastSync = Date.now();
+        updateDebug();
       }
       setSyncStatus('ok');
+    } catch (e) {
+      REMOTE.lastError = '_runSync threw: ' + (e && e.message || e);
+      console.warn('[JUNO FLOW] _runSync exception:', e);
+      setSyncStatus('fail');
     } finally {
       this._syncing = false;
       updateDebug();
@@ -1566,22 +1657,37 @@ const Leaderboard = {
   async loadRemote() {
     if (!REMOTE.enabled) return;
     setSyncStatus('syncing');
-    const remote = await REMOTE.fetch();
-    if (!remote) { setSyncStatus('fail'); updateDebug(); return; }
-    const merged = this._merge(this.entries, remote);
-    const localOnly = this.entries.some(e =>
-      !remote.find(r => r.name === e.name && r.score === e.score && r.date === e.date));
-    this.entries = merged;
-    this.save();
-    this.render(Session.username);
-    this._lastSync = Date.now();
-    // push back if we had any local-only entries
-    if (localOnly) {
-      const ok = await REMOTE.push(this.entries);
-      if (!ok) { setSyncStatus('fail'); updateDebug(); return; }
-    }
-    setSyncStatus('ok');
     updateDebug();
+    try {
+      const remote = await REMOTE.fetch();
+      if (!remote) { setSyncStatus('fail'); updateDebug(); return; }
+      const merged = this._merge(this.entries, remote);
+      // Push back if: (a) we have local-only entries, OR (b) server has dupes/unclean
+      // state that merge collapsed (remote.length differs from merged-from-remote-only).
+      const cleanedRemoteOnly = this._merge(remote, []);
+      const serverDirty = cleanedRemoteOnly.length !== remote.length;
+      const localOnly = (this.entries || []).some(e => {
+        if (!e || typeof e !== 'object') return false;
+        return !remote.find(r => r && r.name === e.name && r.score === e.score && r.date === e.date);
+      });
+      this.entries = merged;
+      try { this.save(); } catch (e) { REMOTE.lastError = 'save threw: ' + (e && e.message || e); }
+      try { this.render(Session && Session.username); } catch (e) { REMOTE.lastError = 'render threw: ' + (e && e.message || e); }
+      this._lastSync = Date.now();
+      updateDebug();
+      // push back if we had any local-only entries or server needs cleaning
+      if (localOnly || serverDirty) {
+        const ok = await REMOTE.push(this.entries);
+        if (!ok) { setSyncStatus('fail'); updateDebug(); return; }
+      }
+      setSyncStatus('ok');
+      updateDebug();
+    } catch (e) {
+      REMOTE.lastError = 'loadRemote threw: ' + (e && e.message || e);
+      console.warn('[JUNO FLOW] loadRemote exception:', e);
+      setSyncStatus('fail');
+      updateDebug();
+    }
   },
   render(highlightName) {
     if (!leaderboardBody) return;
@@ -1733,10 +1839,16 @@ const Game = {
     // always submit — fallback to typed-but-unconfirmed name, then "Player"
     const name = (Session.username || (nameInputEl && nameInputEl.value.trim()) || 'Player').slice(0, 16);
     Session.setUsername(name); // persist
-    const rank = Leaderboard.submit(name, Score.current, Stage.current, Stage.kills);
+    const result = Leaderboard.submit(name, Score.current, Stage.current, Stage.kills);
+    const rank = result.rank;
+    const newBadge = result.improved
+      ? ' <span style="color:#5dd48a">★ 개인 최고</span>'
+      : (result.prevBest > 0
+          ? ` <span style="color:#888">(최고 ${result.prevBest.toLocaleString()})</span>`
+          : '');
     const rankMsg = rank > 0
-      ? `이번 기록: <b style="color:#ffd24a">${rank}위</b> — ${Score.current.toLocaleString()}점`
-      : `이번 기록: ${Score.current.toLocaleString()}점 (TOP ${Leaderboard.MAX} 진입 실패)`;
+      ? `이번 기록: <b style="color:#ffd24a">${rank}위</b> — ${Score.current.toLocaleString()}점${newBadge}`
+      : `이번 기록: ${Score.current.toLocaleString()}점 (TOP ${Leaderboard.MAX} 진입 실패)${newBadge}`;
     this.showOverlay(
       'GAME OVER', '패 배',
       `Stage ${Stage.current} · ${Stage.kills} kills<br>${rankMsg}`,
@@ -1839,6 +1951,7 @@ const dbgRemoteEl = document.getElementById('dbgRemote');
 const dbgTimeEl   = document.getElementById('dbgTime');
 const dbgErrorEl  = document.getElementById('dbgError');
 const resyncBtn   = document.getElementById('resyncBtn');
+const copyErrBtn  = document.getElementById('copyErrBtn');
 let __dbgRemoteCount = null;   // last known server entry count (from a fetch)
 function updateDebug() {
   try {
@@ -1858,9 +1971,37 @@ function updateDebug() {
       }
     }
     if (dbgErrorEl) {
-      dbgErrorEl.textContent = REMOTE.lastError ? `에러: ${REMOTE.lastError}` : '';
+      if (REMOTE.lastError) {
+        dbgErrorEl.textContent = REMOTE.lastError;
+        dbgErrorEl.classList.add('show');
+        if (copyErrBtn) copyErrBtn.style.display = '';
+      } else {
+        dbgErrorEl.textContent = '';
+        dbgErrorEl.classList.remove('show');
+        if (copyErrBtn) copyErrBtn.style.display = 'none';
+      }
     }
   } catch (_) { /* never let debug UI break the game */ }
+}
+// Copy error to clipboard so user can paste it back
+if (copyErrBtn) {
+  copyErrBtn.addEventListener('click', async () => {
+    const txt = (REMOTE.lastError || '') + '\n---\nUA: ' + navigator.userAgent;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(txt);
+      } else {
+        // fallback: select the error text so user can long-press copy
+        const range = document.createRange();
+        range.selectNodeContents(dbgErrorEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(range);
+      }
+      const old = copyErrBtn.textContent;
+      copyErrBtn.textContent = '복사됨!';
+      setTimeout(() => { copyErrBtn.textContent = old; }, 1200);
+    } catch (_) { /* ignore */ }
+  });
 }
 // Manual resync — forces a fresh fetch + push of any local-only entries
 if (resyncBtn) {
