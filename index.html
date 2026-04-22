@@ -2,6 +2,11 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
 <title>JUNO FLOW</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1334,25 +1339,38 @@ const Leaderboard = {
   USER_KEY: 'junoFlowUsername',
   MAX: 50,
   entries: [],
+  _mem: { board: null, user: '' }, // in-memory fallback when localStorage blocked
 
+  _lsAvailable() {
+    try {
+      localStorage.setItem('__jf_test__', '1');
+      localStorage.removeItem('__jf_test__');
+      return true;
+    } catch (_) { return false; }
+  },
   load() {
     try {
       const raw = localStorage.getItem(this.KEY);
       this.entries = raw ? JSON.parse(raw) : [];
       if (!Array.isArray(this.entries)) this.entries = [];
-    } catch (_) { this.entries = []; }
+    } catch (_) {
+      this.entries = Array.isArray(this._mem.board) ? this._mem.board.slice() : [];
+    }
   },
   save() {
+    this._mem.board = this.entries.slice(); // always keep in-memory copy
     try { localStorage.setItem(this.KEY, JSON.stringify(this.entries)); } catch (_) {}
   },
   loadUsername() {
-    try { return localStorage.getItem(this.USER_KEY) || ''; } catch (_) { return ''; }
+    try { return localStorage.getItem(this.USER_KEY) || this._mem.user || ''; }
+    catch (_) { return this._mem.user || ''; }
   },
   saveUsername(name) {
+    this._mem.user = name;
     try { localStorage.setItem(this.USER_KEY, name); } catch (_) {}
   },
   submit(name, score, stage, kills) {
-    const entry = { name: name.slice(0, 16), score, stage, kills, date: Date.now() };
+    const entry = { name: (name || 'Player').slice(0, 16), score: score | 0, stage: stage | 0, kills: kills | 0, date: Date.now() };
     this.entries.push(entry);
     this.entries.sort((a, b) => b.score - a.score || b.stage - a.stage);
     this.entries = this.entries.slice(0, this.MAX);
@@ -1506,19 +1524,19 @@ const Game = {
 
   gameOver() {
     this.state = 'gameover';
-    // submit score
-    const rank = Session.username
-      ? Leaderboard.submit(Session.username, Score.current, Stage.current, Stage.kills)
-      : 0;
+    // always submit — fallback to typed-but-unconfirmed name, then "Player"
+    const name = (Session.username || (nameInputEl && nameInputEl.value.trim()) || 'Player').slice(0, 16);
+    Session.setUsername(name); // persist
+    const rank = Leaderboard.submit(name, Score.current, Stage.current, Stage.kills);
     const rankMsg = rank > 0
-      ? `🏆 이번 기록: <b style="color:#ffd24a">${rank}위</b> — ${Score.current.toLocaleString()}점`
+      ? `이번 기록: <b style="color:#ffd24a">${rank}위</b> — ${Score.current.toLocaleString()}점`
       : `이번 기록: ${Score.current.toLocaleString()}점 (TOP ${Leaderboard.MAX} 진입 실패)`;
     this.showOverlay(
       'GAME OVER', '패 배',
       `Stage ${Stage.current} · ${Stage.kills} kills<br>${rankMsg}`,
       '다 시 시 작'
     );
-    Leaderboard.render(Session.username);
+    Leaderboard.render(name);
     leaderboardEl.style.display = '';
     rankPopupEl.textContent = rank > 0 && rank <= 3 ? `NEW ${rank === 1 ? 'CHAMPION' : 'TOP ' + rank} !` : '';
     startDrop.style.display = 'none';
@@ -1616,7 +1634,7 @@ nameInputEl.addEventListener('input', () => {
 });
 
 // -------------------------------------------------------------
-// Mobile touch controls
+// Mobile touch controls — uses Pointer Events for max compatibility
 // -------------------------------------------------------------
 (function setupTouchControls() {
   const touchEl = document.getElementById('touchControls');
@@ -1638,75 +1656,73 @@ nameInputEl.addEventListener('input', () => {
     if (k === ' ' && !Input.held[k]) Input.jumpBuffer = Config.jumpBufferTime;
     Input.held[k] = true;
     // unlock audio on first user gesture (iOS / mobile browsers)
-    try { Audio._ctx().resume && Audio._ctx().resume(); } catch (_) {}
+    try {
+      const ac = Audio._ctx();
+      if (ac && ac.state === 'suspended') ac.resume();
+    } catch (_) {}
   }
   function release(action) {
     const k = keyMap[action];
     Input.held[k] = false;
   }
 
-  // Track which touch id is bound to which button, so finger sliding works
-  const touchToBtn = new Map();
+  // Track which pointerId is bound to which button, so finger-drag works cleanly
+  const pointerToBtn = new Map();
 
   function bindBtn(btn) {
     const action = btn.dataset.action;
 
     const onStart = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
       btn.classList.add('active');
       press(action);
-      if (e.changedTouches) {
-        for (const t of e.changedTouches) touchToBtn.set(t.identifier, { btn, action });
+      if (e.pointerId != null) {
+        pointerToBtn.set(e.pointerId, { btn, action });
+        try { btn.setPointerCapture(e.pointerId); } catch (_) {}
       }
     };
     const onEnd = (e) => {
-      e.preventDefault();
+      if (e.cancelable) e.preventDefault();
       btn.classList.remove('active');
       release(action);
-      if (e.changedTouches) {
-        for (const t of e.changedTouches) touchToBtn.delete(t.identifier);
+      if (e.pointerId != null) {
+        pointerToBtn.delete(e.pointerId);
+        try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
       }
     };
 
-    btn.addEventListener('touchstart',  onStart, { passive: false });
-    btn.addEventListener('touchend',    onEnd,   { passive: false });
-    btn.addEventListener('touchcancel', onEnd,   { passive: false });
+    // Pointer Events — unified touch + mouse + pen on all modern browsers
+    if (window.PointerEvent) {
+      btn.addEventListener('pointerdown',   onStart, { passive: false });
+      btn.addEventListener('pointerup',     onEnd,   { passive: false });
+      btn.addEventListener('pointercancel', onEnd,   { passive: false });
+      btn.addEventListener('pointerleave',  onEnd);
+    } else {
+      // Fallback for older browsers
+      btn.addEventListener('touchstart',  (e) => { if (e.cancelable) e.preventDefault(); btn.classList.add('active');  press(action); },   { passive: false });
+      btn.addEventListener('touchend',    (e) => { if (e.cancelable) e.preventDefault(); btn.classList.remove('active'); release(action); }, { passive: false });
+      btn.addEventListener('touchcancel', (e) => { if (e.cancelable) e.preventDefault(); btn.classList.remove('active'); release(action); }, { passive: false });
+      btn.addEventListener('mousedown',   (e) => { e.preventDefault(); btn.classList.add('active');  press(action); });
+      btn.addEventListener('mouseup',     (e) => { e.preventDefault(); btn.classList.remove('active'); release(action); });
+      btn.addEventListener('mouseleave',  ()  => { btn.classList.remove('active'); release(action); });
+    }
 
-    // mouse fallback (desktop debugging)
-    btn.addEventListener('mousedown',  (e) => { e.preventDefault(); btn.classList.add('active');  press(action); });
-    btn.addEventListener('mouseup',    (e) => { e.preventDefault(); btn.classList.remove('active'); release(action); });
-    btn.addEventListener('mouseleave', ()  => { btn.classList.remove('active'); release(action); });
-
-    // prevent context menu on long-press
+    // long-press context menu off
     btn.addEventListener('contextmenu', e => e.preventDefault());
+    // also kill accidental clicks that follow touch (iOS 300ms ghost click)
+    btn.addEventListener('click', e => e.preventDefault());
   }
 
   document.querySelectorAll('#touchControls .touch-btn').forEach(bindBtn);
 
-  // If finger slides off a button without firing touchend on it,
-  // a global touchmove handler catches that and releases.
+  // Prevent iOS rubber-band scroll / pinch-zoom inside the game
   document.addEventListener('touchmove', (e) => {
-    for (const t of e.changedTouches) {
-      const rec = touchToBtn.get(t.identifier);
-      if (!rec) continue;
-      const el = document.elementFromPoint(t.clientX, t.clientY);
-      if (el !== rec.btn && !rec.btn.contains(el)) {
-        rec.btn.classList.remove('active');
-        release(rec.action);
-        touchToBtn.delete(t.identifier);
-      }
-    }
-  }, { passive: true });
-
-  // Prevent iOS rubber-band scroll / pinch-zoom on the game itself
-  document.addEventListener('touchmove', (e) => {
-    if (e.target === canvas) e.preventDefault();
+    if (e.target === canvas && e.cancelable) e.preventDefault();
   }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
   document.addEventListener('dblclick',     e => e.preventDefault());
 
-  // Show controls when on a touch device, hide on the start/overlay screens
+  // Show controls only while playing (and on touch-capable devices)
   function updateVisibility() {
     const playing = Game.state === 'playing';
     if (isTouchDevice && playing) touchEl.classList.add('on');
@@ -1715,13 +1731,19 @@ nameInputEl.addEventListener('input', () => {
   Game._updateTouchVisibility = updateVisibility;
   updateVisibility();
 
-  // Release all held touch keys when leaving play (e.g. game over)
+  // Release held touch keys when leaving play (prevents "stuck key")
   Game._releaseAllTouchKeys = () => {
     Object.values(keyMap).forEach(k => { Input.held[k] = false; });
     document.querySelectorAll('#touchControls .touch-btn.active')
       .forEach(b => b.classList.remove('active'));
-    touchToBtn.clear();
+    pointerToBtn.clear();
   };
+
+  // Lose focus / tab switch → release all
+  window.addEventListener('blur', () => { if (Game._releaseAllTouchKeys) Game._releaseAllTouchKeys(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && Game._releaseAllTouchKeys) Game._releaseAllTouchKeys();
+  });
 })();
 
 // Hook touch-visibility into existing state transitions
