@@ -169,6 +169,32 @@
   #syncStatus.ok      { color: #5dd48a; }
   #syncStatus.fail    { color: #ff8a8a; }
 
+  /* Debug panel */
+  #debugPanel {
+    margin-top: 10px; padding-top: 8px;
+    border-top: 1px dashed #333;
+    font-size: 10px; color: #888; letter-spacing: 0.5px;
+    line-height: 1.5;
+  }
+  #debugPanel .row { word-break: break-all; }
+  #debugPanel #dbgError { color: #ff8a8a; min-height: 0; }
+  #debugPanel #dbgError:empty { display: none; }
+  #resyncBtn {
+    margin-top: 6px;
+    background: rgba(255,210,74,0.12);
+    color: #ffd24a;
+    border: 1px solid rgba(255,210,74,0.4);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #resyncBtn:hover { background: rgba(255,210,74,0.22); }
+  #resyncBtn:disabled { opacity: 0.5; cursor: default; }
+
   /* ============ Mobile touch controls ============ */
   #touchControls {
     position: fixed; inset: 0; pointer-events: none; z-index: 5;
@@ -325,6 +351,11 @@
       </thead>
       <tbody id="leaderboardBody"></tbody>
     </table>
+    <div id="debugPanel">
+      <div class="row"><span id="dbgLocal">로컬 0개</span> · <span id="dbgRemote">서버 ?</span> · <span id="dbgTime">마지막 싱크 —</span></div>
+      <div class="row" id="dbgError"></div>
+      <button id="resyncBtn" type="button">재동기화</button>
+    </div>
   </div>
 </div>
 
@@ -1374,55 +1405,65 @@ const REMOTE = {
 
   _base() { return `https://api.jsonbin.io/v3/b/${this.BIN_ID}`; },
   _headers() { return { 'Content-Type': 'application/json', 'X-Master-Key': this.API_KEY, 'X-Bin-Meta': 'false' }; },
-  _withTimeout(ms) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), ms);
-    return { signal: ctrl.signal, done: () => clearTimeout(t) };
+  lastError: '',
+
+  _race(promise, ms, label) {
+    return Promise.race([
+      promise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error(label + ' timeout ' + ms + 'ms')), ms))
+    ]);
   },
 
   async fetch() {
     if (!this.enabled) return null;
-    const to = this._withTimeout(8000);
+    this.lastError = '';
     try {
-      const res = await window.fetch(this._base() + '/latest', { headers: this._headers(), signal: to.signal });
-      to.done();
+      console.log('[JUNO FLOW] GET', this._base() + '/latest');
+      const res = await this._race(
+        window.fetch(this._base() + '/latest', { headers: this._headers(), mode: 'cors', cache: 'no-store' }),
+        7000, 'GET'
+      );
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
-        console.warn('[JUNO FLOW] JSONBin GET not ok:', res.status, txt.slice(0, 200));
+        this.lastError = `HTTP ${res.status}: ${txt.slice(0, 140)}`;
+        console.warn('[JUNO FLOW] GET not ok:', this.lastError);
         return null;
       }
-      const j = await res.json();
-      // with X-Bin-Meta: false, response IS the record directly
-      // without it, it's { record, metadata }
+      const j = await this._race(res.json(), 4000, 'GET-json');
       const record = (j && j.record) ? j.record : j;
       const list = (record && Array.isArray(record.leaderboard)) ? record.leaderboard :
                    (Array.isArray(record) ? record : []);
+      console.log('[JUNO FLOW] GET ok, entries =', list.length);
       return Array.isArray(list) ? list : [];
     } catch (e) {
-      to.done();
-      console.warn('[JUNO FLOW] JSONBin GET error:', e && (e.name + ': ' + e.message));
+      this.lastError = (e && (e.name ? e.name + ': ' : '') + (e.message || e)) || 'unknown';
+      console.warn('[JUNO FLOW] GET error:', this.lastError);
       return null;
     }
   },
   async push(entries) {
     if (!this.enabled) return false;
-    const to = this._withTimeout(8000);
+    this.lastError = '';
     try {
-      const res = await window.fetch(this._base(), {
-        method: 'PUT', headers: this._headers(),
-        body: JSON.stringify({ leaderboard: entries }),
-        signal: to.signal
-      });
-      to.done();
+      console.log('[JUNO FLOW] PUT', this._base(), 'entries =', entries.length);
+      const res = await this._race(
+        window.fetch(this._base(), {
+          method: 'PUT', headers: this._headers(), mode: 'cors', cache: 'no-store',
+          body: JSON.stringify({ leaderboard: entries })
+        }),
+        7000, 'PUT'
+      );
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
-        console.warn('[JUNO FLOW] JSONBin PUT not ok:', res.status, txt.slice(0, 200));
+        this.lastError = `HTTP ${res.status}: ${txt.slice(0, 140)}`;
+        console.warn('[JUNO FLOW] PUT not ok:', this.lastError);
         return false;
       }
+      console.log('[JUNO FLOW] PUT ok');
       return true;
     } catch (e) {
-      to.done();
-      console.warn('[JUNO FLOW] JSONBin PUT error:', e && (e.name + ': ' + e.message));
+      this.lastError = (e && (e.name ? e.name + ': ' : '') + (e.message || e)) || 'unknown';
+      console.warn('[JUNO FLOW] PUT error:', this.lastError);
       return false;
     }
   }
@@ -1488,44 +1529,59 @@ const Leaderboard = {
     this.entries = this._merge(this.entries, [entry]);
     this.save();
     const localRank = this.entries.indexOf(entry) + 1;
-    // fire-and-forget remote sync (non-blocking)
-    this._syncRemote(entry);
-    return localRank; // instant local rank
+    // queued remote sync — won't drop subsequent submits
+    this._queueSync();
+    return localRank;
   },
-  async _syncRemote(newEntry) {
-    if (!REMOTE.enabled || this._syncing) return;
+  _queueSync() {
+    if (!REMOTE.enabled) return;
+    this._pendingSync = true;
+    if (this._syncing) return;           // already running — it'll loop again
+    this._runSync();
+  },
+  async _runSync() {
+    if (this._syncing) return;
     this._syncing = true;
     setSyncStatus('syncing');
     try {
-      const remote = await REMOTE.fetch();
-      const merged = this._merge(remote || [], this.entries);
-      const ok = await REMOTE.push(merged);
-      if (ok) {
+      // loop until no more pending syncs arrived during the previous round
+      while (this._pendingSync) {
+        this._pendingSync = false;
+        const remote = await REMOTE.fetch();
+        if (!remote) { setSyncStatus('fail'); updateDebug(); return; }
+        const merged = this._merge(remote, this.entries);
+        const ok = await REMOTE.push(merged);
+        if (!ok) { setSyncStatus('fail'); updateDebug(); return; }
         this.entries = merged;
         this.save();
         this.render(Session.username);
-        setSyncStatus('ok');
-      } else {
-        setSyncStatus('fail');
+        this._lastSync = Date.now();
       }
-    } catch (_) {
-      setSyncStatus('fail');
+      setSyncStatus('ok');
     } finally {
       this._syncing = false;
+      updateDebug();
     }
   },
   async loadRemote() {
     if (!REMOTE.enabled) return;
     setSyncStatus('syncing');
     const remote = await REMOTE.fetch();
-    if (remote) {
-      this.entries = this._merge(this.entries, remote);
-      this.save();
-      this.render(Session.username);
-      setSyncStatus('ok');
-    } else {
-      setSyncStatus('fail');
+    if (!remote) { setSyncStatus('fail'); updateDebug(); return; }
+    const merged = this._merge(this.entries, remote);
+    const localOnly = this.entries.some(e =>
+      !remote.find(r => r.name === e.name && r.score === e.score && r.date === e.date));
+    this.entries = merged;
+    this.save();
+    this.render(Session.username);
+    this._lastSync = Date.now();
+    // push back if we had any local-only entries
+    if (localOnly) {
+      const ok = await REMOTE.push(this.entries);
+      if (!ok) { setSyncStatus('fail'); updateDebug(); return; }
     }
+    setSyncStatus('ok');
+    updateDebug();
   },
   render(highlightName) {
     if (!leaderboardBody) return;
@@ -1776,11 +1832,69 @@ function setSyncStatus(state) {
 }
 
 // -------------------------------------------------------------
+// Debug panel — shows exactly what the sync pipeline is doing
+// -------------------------------------------------------------
+const dbgLocalEl  = document.getElementById('dbgLocal');
+const dbgRemoteEl = document.getElementById('dbgRemote');
+const dbgTimeEl   = document.getElementById('dbgTime');
+const dbgErrorEl  = document.getElementById('dbgError');
+const resyncBtn   = document.getElementById('resyncBtn');
+let __dbgRemoteCount = null;   // last known server entry count (from a fetch)
+function updateDebug() {
+  try {
+    if (dbgLocalEl)  dbgLocalEl.textContent  = `로컬 ${Leaderboard.entries.length}개`;
+    if (dbgRemoteEl) dbgRemoteEl.textContent = (__dbgRemoteCount == null)
+      ? '서버 ?'
+      : `서버 ${__dbgRemoteCount}개`;
+    if (dbgTimeEl) {
+      if (Leaderboard._lastSync) {
+        const d = new Date(Leaderboard._lastSync);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        dbgTimeEl.textContent = `마지막 싱크 ${hh}:${mm}:${ss}`;
+      } else {
+        dbgTimeEl.textContent = '마지막 싱크 —';
+      }
+    }
+    if (dbgErrorEl) {
+      dbgErrorEl.textContent = REMOTE.lastError ? `에러: ${REMOTE.lastError}` : '';
+    }
+  } catch (_) { /* never let debug UI break the game */ }
+}
+// Manual resync — forces a fresh fetch + push of any local-only entries
+if (resyncBtn) {
+  resyncBtn.addEventListener('click', async () => {
+    resyncBtn.disabled = true;
+    try {
+      await Leaderboard.loadRemote();
+      // then push everything we have to make sure server is current
+      Leaderboard._pendingSync = true;
+      if (!Leaderboard._syncing) Leaderboard._runSync();
+    } finally {
+      setTimeout(() => { resyncBtn.disabled = false; }, 1200);
+    }
+  });
+}
+
+// Patch REMOTE.fetch to record the last observed server count for the debug panel
+(function instrumentRemote() {
+  const origFetch = REMOTE.fetch.bind(REMOTE);
+  REMOTE.fetch = async function patchedFetch() {
+    const list = await origFetch();
+    if (Array.isArray(list)) __dbgRemoteCount = list.length;
+    updateDebug();
+    return list;
+  };
+})();
+
+// -------------------------------------------------------------
 // Leaderboard bootstrap
 // -------------------------------------------------------------
 Leaderboard.load();
 Leaderboard.render();
 setSyncStatus(REMOTE.enabled ? 'syncing' : '');
+updateDebug();
 // Async pull from shared server (if configured)
 Leaderboard.loadRemote();
 (function bootstrapUsername() {
