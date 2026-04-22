@@ -164,6 +164,10 @@
   #rankPopup {
     margin-top: 10px; color: #ffd24a; font-size: 14px; letter-spacing: 2px;
   }
+  #syncStatus { font-size: 10px; letter-spacing: 1px; margin-left: 6px; }
+  #syncStatus.syncing { color: #6ab0ff; }
+  #syncStatus.ok      { color: #5dd48a; }
+  #syncStatus.fail    { color: #ff8a8a; }
 
   /* ============ Mobile touch controls ============ */
   #touchControls {
@@ -314,7 +318,7 @@
   <div id="rankPopup"></div>
 
   <div id="leaderboard">
-    <h3>RANKING TOP 10</h3>
+    <h3>RANKING TOP 10 <span id="syncStatus"></span></h3>
     <table>
       <thead>
         <tr><th style="width:32px">#</th><th>이름</th><th class="right">점수</th><th class="right" style="width:56px">스테이지</th></tr>
@@ -1353,12 +1357,53 @@ const Score = {
 // -------------------------------------------------------------
 // Leaderboard — localStorage persisted Top-N
 // -------------------------------------------------------------
+// -------------------------------------------------------------
+// REMOTE — shared leaderboard via JSONBin.io (free, 2-line setup)
+//   1) https://jsonbin.io 에 무료 가입
+//   2) "Create a Bin" → 내용을 아래와 같이 입력:
+//        { "leaderboard": [] }
+//   3) 만든 Bin의 BIN ID와, My Profile → API Keys → X-MASTER-KEY 를 복사
+//   4) 아래 BIN_ID, API_KEY 에 붙여넣고 enabled: true 로 변경
+//   → 이 HTML 을 쓰는 모든 유저가 같은 랭킹을 공유합니다.
+//   설정 안 해도 localStorage 기반 개인 랭킹은 그대로 작동합니다.
+// -------------------------------------------------------------
+const REMOTE = {
+  enabled: true,
+  BIN_ID: '69e823b3856a6821895bf7cc',
+  API_KEY: '$2a$10$pZS16G2nnMeCzkQXIvEx5OHSBHM4mro/fgW9ZP0DTNRWEASoiJYd6',
+
+  _base() { return `https://api.jsonbin.io/v3/b/${this.BIN_ID}`; },
+  _headers() { return { 'Content-Type': 'application/json', 'X-Master-Key': this.API_KEY }; },
+
+  async fetch() {
+    if (!this.enabled) return null;
+    try {
+      const res = await window.fetch(this._base() + '/latest', { headers: this._headers() });
+      if (!res.ok) return null;
+      const j = await res.json();
+      const list = (j && j.record && j.record.leaderboard) || [];
+      return Array.isArray(list) ? list : [];
+    } catch (_) { return null; }
+  },
+  async push(entries) {
+    if (!this.enabled) return false;
+    try {
+      const res = await window.fetch(this._base(), {
+        method: 'PUT', headers: this._headers(),
+        body: JSON.stringify({ leaderboard: entries })
+      });
+      return res.ok;
+    } catch (_) { return false; }
+  }
+};
+
 const Leaderboard = {
   KEY: 'junoFlowLeaderboard',
   USER_KEY: 'junoFlowUsername',
   MAX: 50,
   entries: [],
   _mem: { board: null, user: '' }, // in-memory fallback when localStorage blocked
+  _syncing: false,
 
   _lsAvailable() {
     try {
@@ -1388,13 +1433,68 @@ const Leaderboard = {
     this._mem.user = name;
     try { localStorage.setItem(this.USER_KEY, name); } catch (_) {}
   },
+  _merge(a, b) {
+    const seen = new Set();
+    const out = [];
+    for (const e of [...(a || []), ...(b || [])]) {
+      if (!e || typeof e !== 'object') continue;
+      const k = `${e.name}|${e.score}|${e.stage}|${e.date}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({
+        name: String(e.name || 'Player').slice(0, 16),
+        score: e.score | 0,
+        stage: e.stage | 0,
+        kills: e.kills | 0,
+        date: e.date | 0
+      });
+    }
+    out.sort((a, b) => b.score - a.score || b.stage - a.stage || a.date - b.date);
+    return out.slice(0, this.MAX);
+  },
   submit(name, score, stage, kills) {
     const entry = { name: (name || 'Player').slice(0, 16), score: score | 0, stage: stage | 0, kills: kills | 0, date: Date.now() };
-    this.entries.push(entry);
-    this.entries.sort((a, b) => b.score - a.score || b.stage - a.stage);
-    this.entries = this.entries.slice(0, this.MAX);
+    this.entries = this._merge(this.entries, [entry]);
     this.save();
-    return this.entries.indexOf(entry) + 1; // 1-based rank (0 if pushed out)
+    const localRank = this.entries.indexOf(entry) + 1;
+    // fire-and-forget remote sync (non-blocking)
+    this._syncRemote(entry);
+    return localRank; // instant local rank
+  },
+  async _syncRemote(newEntry) {
+    if (!REMOTE.enabled || this._syncing) return;
+    this._syncing = true;
+    setSyncStatus('syncing');
+    try {
+      const remote = await REMOTE.fetch();
+      const merged = this._merge(remote || [], this.entries);
+      const ok = await REMOTE.push(merged);
+      if (ok) {
+        this.entries = merged;
+        this.save();
+        this.render(Session.username);
+        setSyncStatus('ok');
+      } else {
+        setSyncStatus('fail');
+      }
+    } catch (_) {
+      setSyncStatus('fail');
+    } finally {
+      this._syncing = false;
+    }
+  },
+  async loadRemote() {
+    if (!REMOTE.enabled) return;
+    setSyncStatus('syncing');
+    const remote = await REMOTE.fetch();
+    if (remote) {
+      this.entries = this._merge(this.entries, remote);
+      this.save();
+      this.render(Session.username);
+      setSyncStatus('ok');
+    } else {
+      setSyncStatus('fail');
+    }
   },
   render(highlightName) {
     if (!leaderboardBody) return;
@@ -1633,10 +1733,25 @@ window.addEventListener('keydown', e => {
 });
 
 // -------------------------------------------------------------
+// Sync status indicator helper
+// -------------------------------------------------------------
+const syncStatusEl = document.getElementById('syncStatus');
+function setSyncStatus(state) {
+  if (!syncStatusEl) return;
+  syncStatusEl.className = state || '';
+  syncStatusEl.textContent = REMOTE.enabled
+    ? ({ syncing: '· 동기화 중…', ok: '· 실시간', fail: '· 연결실패' }[state] || '')
+    : '· 로컬';
+}
+
+// -------------------------------------------------------------
 // Leaderboard bootstrap
 // -------------------------------------------------------------
 Leaderboard.load();
 Leaderboard.render();
+setSyncStatus(REMOTE.enabled ? 'syncing' : '');
+// Async pull from shared server (if configured)
+Leaderboard.loadRemote();
 (function bootstrapUsername() {
   const saved = Leaderboard.loadUsername();
   if (saved) {
