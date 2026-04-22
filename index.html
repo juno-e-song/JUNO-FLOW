@@ -15,7 +15,6 @@
     font-size: 13px; letter-spacing: 1px;
     pointer-events: none;
   }
-  #hudName { color: #ffd24a; font-weight: 700; margin-bottom: 2px; }
   #hpBar {
     width: 220px; height: 16px; background: #222;
     border: 2px solid #fff; border-radius: 3px;
@@ -28,7 +27,6 @@
   }
   #stageInfo { margin-top: 10px; color: #ffd24a; }
   #killCount { font-size: 12px; color: #bbb; margin-top: 4px; }
-  #hudScore { font-size: 12px; color: #bbb; margin-top: 4px; }
 
   /* Proximity tint */
   #tint {
@@ -115,8 +113,17 @@
     text-align: center;
   }
   #nameInput:focus { outline: none; border-color: #ffd24a; }
+  #currentName { color: #ffd24a; font-weight: 700; }
+  #changeNameBtn {
+    background: none; border: none; color: #888; cursor: pointer;
+    font-size: 11px; text-decoration: underline;
+  }
 
-  /* Leaderboard (현재 이 파일에서는 점수 전송만, 표시는 별도 랭킹 페이지에서) */
+  /* HUD name display */
+  #hudName { color: #ffd24a; font-weight: 700; margin-bottom: 2px; }
+  #hudScore { font-size: 12px; color: #bbb; margin-top: 4px; }
+
+  /* Leaderboard */
   #leaderboard {
     margin-top: 18px; background: rgba(20,20,20,0.85);
     border: 1px solid #333; border-radius: 6px;
@@ -149,59 +156,91 @@
     margin-top: 10px; color: #ffd24a; font-size: 14px; letter-spacing: 2px;
   }
 
-  /* 모바일 터치 컨트롤 */
+  /* ============ Mobile touch controls ============ */
   #touchControls {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 10px 12px 14px;
-    display: none; /* 모바일에서만 보이도록 아래 미디어쿼리에서 켭니다 */
-    justify-content: space-between;
-    align-items: flex-end;
-    z-index: 5;
-    pointer-events: none;
+    position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    display: none;
   }
-  #touchControls .touch-left,
-  #touchControls .touch-right {
-    display: flex;
-    gap: 8px;
-    pointer-events: auto;
+  #touchControls.on { display: block; }
+  .touch-group {
+    position: fixed; bottom: max(18px, env(safe-area-inset-bottom));
+    display: flex; gap: 14px; pointer-events: auto;
+  }
+  .touch-group.left { left: max(18px, env(safe-area-inset-left)); }
+  .touch-group.right {
+    right: max(18px, env(safe-area-inset-right));
+    flex-direction: column-reverse;
+    align-items: center;
   }
   .touch-btn {
-    min-width: 56px;
-    min-height: 56px;
-    padding: 8px 14px;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 1px;
+    width: 72px; height: 72px; border-radius: 50%;
+    background: rgba(255, 210, 74, 0.18);
+    border: 2px solid rgba(255, 210, 74, 0.6);
+    color: #ffd24a;
+    font-size: 26px; font-weight: 700;
+    font-family: inherit;
+    user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
     touch-action: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: transform 0.08s, background 0.08s;
+    backdrop-filter: blur(3px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
   }
-  .touch-btn:active {
-    background: rgba(255, 210, 74, 0.9);
-    color: #111;
+  .touch-btn.active {
+    transform: scale(0.92);
+    background: rgba(255, 210, 74, 0.55);
+  }
+  .touch-btn.action { width: 82px; height: 82px; }
+  .touch-btn.jump {
+    background: rgba(74, 180, 255, 0.22);
+    border-color: rgba(140, 210, 255, 0.7);
+    color: #9fd8ff;
+  }
+  .touch-btn.jump.active { background: rgba(74, 180, 255, 0.6); }
+  .touch-btn.attack {
+    background: rgba(255, 90, 90, 0.22);
+    border-color: rgba(255, 130, 130, 0.7);
+    color: #ff9a9a;
+  }
+  .touch-btn.attack.active { background: rgba(255, 90, 90, 0.6); }
+
+  /* Responsive overlay/HUD for mobile */
+  @media (max-width: 820px), (pointer: coarse) {
+    #hud { font-size: 11px; top: 8px; left: 8px; }
+    #hpBar { width: 150px; height: 12px; }
+    #stageInfo { margin-top: 6px; }
+    #uploadPanel {
+      top: 8px; right: 8px;
+      font-size: 10px; padding: 6px 8px;
+    }
+    #overlay { padding: 16px; }
+    #overlay h1 { font-size: 36px; letter-spacing: 4px; }
+    #overlay .sub { font-size: 11px; letter-spacing: 3px; margin-bottom: 16px; }
+    #overlay p { font-size: 13px; line-height: 1.55; }
+    #overlay button {
+      padding: 18px 36px; font-size: 14px; letter-spacing: 3px;
+      margin-top: 18px;
+    }
+    #startDrop { padding: 12px 18px; font-size: 11px; }
+    .controls { font-size: 11px; gap: 4px 12px; }
+    #nameInput { width: 160px; font-size: 13px; }
+    #leaderboard { min-width: unset; width: 100%; max-width: 360px; padding: 10px 12px; }
+    #leaderboard th, #leaderboard td { padding: 3px 4px; font-size: 11px; }
+  }
+  @media (max-height: 480px) and (orientation: landscape) {
+    #overlay h1 { font-size: 28px; margin-bottom: 2px; }
+    #overlay .sub { margin-bottom: 8px; }
+    #overlay p { font-size: 12px; margin: 2px 0; }
+    #overlay button { padding: 10px 24px; margin-top: 8px; }
+    .controls { margin-top: 6px; }
+    #startDrop { margin-top: 6px; padding: 6px 12px; }
   }
 
-  @media (max-width: 768px) {
-    /* 모바일에서 터치 컨트롤 노출 및 오버레이 여백 축소 */
-    #touchControls {
-      display: flex;
-    }
-    #overlay {
-      padding: 16px;
-    }
-    #overlay h1 {
-      font-size: 40px;
-      letter-spacing: 4px;
-    }
-    #overlay .sub {
-      letter-spacing: 2px;
-    }
-  }
+  /* Prevent iOS double-tap zoom / scroll while playing */
+  html, body { touch-action: none; overscroll-behavior: none; }
+  #game { touch-action: none; }
 </style>
 </head>
 <body>
@@ -210,12 +249,12 @@
 <div id="flash"></div>
 
 <div id="hud" style="display:none">
-  <div id="hudName">PLAYER: -</div>
+  <div id="hudName">Player</div>
   <div>HP</div>
   <div id="hpBar"><div id="hpFill"></div></div>
   <div id="stageInfo">STAGE 1</div>
   <div id="killCount">Kills: 0 / 5</div>
-  <div id="hudScore">SCORE: 0</div>
+  <div id="hudScore">Score: 0</div>
   <div style="margin-top:10px; font-size:11px; color:#999">
     <kbd>←</kbd> <kbd>→</kbd> · <kbd>Space</kbd> 점프 · <kbd>Z</kbd> 공격
   </div>
@@ -225,18 +264,6 @@
   <div>몬스터 이미지</div>
   <label for="monsterFile">클릭해서 변경</label>
   <input type="file" id="monsterFile" accept="image/*">
-</div>
-
-<!-- 모바일 터치 컨트롤 -->
-<div id="touchControls">
-  <div class="touch-left">
-    <button class="touch-btn" data-action="left">◀</button>
-    <button class="touch-btn" data-action="right">▶</button>
-  </div>
-  <div class="touch-right">
-    <button class="touch-btn" data-action="jump">JUMP</button>
-    <button class="touch-btn" data-action="attack">ATK</button>
-  </div>
 </div>
 
 <!-- Start / Game-over / Victory overlay -->
@@ -253,6 +280,11 @@
     <div class="k"><kbd>Z</kbd></div><div class="v">공격</div>
   </div>
 
+  <div id="nameRow">
+    <span>닉네임</span>
+    <input id="nameInput" type="text" maxlength="16" placeholder="예: shadow-juno" autocomplete="off" spellcheck="false">
+  </div>
+
   <label id="startDrop">
     <div style="color:#ffd24a; font-weight:700">(선택) 나만의 몬스터 이미지 사용</div>
     <div>클릭 / 드래그 / Ctrl+V 붙여넣기 — 안 올리면 기본 몬스터로 진행</div>
@@ -260,18 +292,49 @@
   </label>
   <div id="previewWrap"><img id="preview" alt="preview"></div>
 
-  <!-- 닉네임 입력 -->
-  <div id="nameRow">
-    <span>닉네임</span>
-    <input id="nameInput" type="text" maxlength="16" placeholder="예: shadow-juno" />
-  </div>
+  <button id="actionBtn">모 험 시 작</button>
 
-  <button id="actionBtn" disabled>모 험 시 작</button>
+  <div id="rankPopup"></div>
+
+  <div id="leaderboard">
+    <h3>RANKING TOP 10</h3>
+    <table>
+      <thead>
+        <tr><th style="width:32px">#</th><th>이름</th><th class="right">점수</th><th class="right" style="width:56px">스테이지</th></tr>
+      </thead>
+      <tbody id="leaderboardBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Mobile touch controls -->
+<div id="touchControls" aria-hidden="true">
+  <div class="touch-group left">
+    <button class="touch-btn dpad" data-action="left" aria-label="왼쪽">◀</button>
+    <button class="touch-btn dpad" data-action="right" aria-label="오른쪽">▶</button>
+  </div>
+  <div class="touch-group right">
+    <button class="touch-btn action jump" data-action="jump" aria-label="점프">▲</button>
+    <button class="touch-btn action attack" data-action="attack" aria-label="공격">Z</button>
+  </div>
 </div>
 
 <script>
 /* =============================================================
-   CREEPY PLATFORMER + RANK SUBMIT
+   CREEPY PLATFORMER
+   Modules (in order defined below):
+     Config    : tunable numbers
+     Input     : keyboard
+     Audio     : music + sfx via Web Audio
+     Camera    : follow + shake
+     Effects   : flash / shake / particles / damage nums
+     Level     : platforms
+     Player    : physics, jump (variable + coyote + buffer), attack
+     Enemy     : AI (patrol / chase / stare / aggression), death
+     Combat    : attack vs enemy hitbox
+     Stage     : enemy spawning, clear conditions, progression
+     Renderer  : draws everything in order
+     Game      : overall state machine, loop, UI screens
    ============================================================= */
 
 // -------------------------------------------------------------
@@ -279,12 +342,23 @@
 // -------------------------------------------------------------
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-let W = 0, H = 0;
+let W = 0, H = 0, DPR = 1;
 function resize() {
-  W = window.innerWidth; H = window.innerHeight;
-  canvas.width = W; canvas.height = H;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  // visualViewport gives accurate size on mobile (accounts for URL bar)
+  const vw = (window.visualViewport && window.visualViewport.width)  || window.innerWidth;
+  const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  W = Math.floor(vw); H = Math.floor(vh);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  canvas.width  = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
-window.addEventListener('resize', resize); resize();
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', resize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+resize();
 
 // -------------------------------------------------------------
 // Config
@@ -292,11 +366,11 @@ window.addEventListener('resize', resize); resize();
 const Config = {
   gravity: 0.6,
   moveSpeed: 5.2,
-  jumpInitial: 9,
-  jumpHoldBoost: 0.55,
-  jumpMaxHoldTime: 0.28,
-  coyoteTime: 0.1,
-  jumpBufferTime: 0.12,
+  jumpInitial: 9,        // initial upward velocity
+  jumpHoldBoost: 0.55,   // extra upward accel while Space held
+  jumpMaxHoldTime: 0.28, // seconds
+  coyoteTime: 0.1,       // grace after walking off
+  jumpBufferTime: 0.12,  // pre-input window
   playerMaxHP: 100,
   attackDuration: 0.18,
   attackCooldown: 0.28,
@@ -307,16 +381,6 @@ const Config = {
   worldWidth: 3600,
   tileSize: 32,
 };
-
-// 랭킹 서버 설정
-const STORAGE_USER_KEY = 'junoFlowUsername';
-// Next.js 랭킹 서버가 다른 도메인에 있다면 여기 채워주세요. 예: 'https://juno-flow-ranking.vercel.app'
-const RANK_API_BASE = '';
-
-function apiUrl(path) {
-  if (!RANK_API_BASE) return path;
-  return RANK_API_BASE.replace(/\/$/, '') + path;
-}
 
 // -------------------------------------------------------------
 // Input — with edge detect + jump buffer
@@ -341,51 +405,6 @@ const Input = {
   consumeJump() { if (this.jumpBuffer > 0) { this.jumpBuffer = 0; return true; } return false; }
 };
 Input.init();
-
-// -------------------------------------------------------------
-// Touch controls → 키보드 입력으로 매핑 (모바일)
-// -------------------------------------------------------------
-(function setupTouchControls() {
-  const el = document.getElementById('touchControls');
-  if (!el) return;
-
-  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  if (!isTouchDevice) return;
-
-  function touchKeyDown(key) {
-    const k = key.toLowerCase();
-    if (!Input.held[k]) Input.pressed[k] = true;
-    if (k === ' ') Input.jumpBuffer = Config.jumpBufferTime;
-    Input.held[k] = true;
-  }
-  function touchKeyUp(key) {
-    const k = key.toLowerCase();
-    Input.held[k] = false;
-  }
-
-  el.querySelectorAll('[data-action]').forEach(btn => {
-    const action = btn.getAttribute('data-action');
-    let key;
-    if (action === 'left') key = 'ArrowLeft';
-    else if (action === 'right') key = 'ArrowRight';
-    else if (action === 'jump') key = ' ';
-    else if (action === 'attack') key = 'z';
-    if (!key) return;
-
-    const onDown = ev => {
-      ev.preventDefault();
-      touchKeyDown(key);
-    };
-    const onUp = ev => {
-      ev.preventDefault();
-      touchKeyUp(key);
-    };
-
-    btn.addEventListener('touchstart', onDown, { passive: false });
-    btn.addEventListener('touchend', onUp, { passive: false });
-    btn.addEventListener('touchcancel', onUp, { passive: false });
-  });
-})();
 
 // -------------------------------------------------------------
 // Audio — music loop + sfx (Web Audio synthesized)
@@ -416,16 +435,19 @@ const Audio = {
   },
   stare()  { this.sfx(1100, 0.05, 'sine', 0.06); },
 
+  // creepy looping ambient music
   startMusic() {
     if (this.musicStarted) return;
     this.musicStarted = true;
     const c = this._ctx();
+    // low drone
     const drone = c.createOscillator(); drone.type = 'sawtooth'; drone.frequency.value = 55;
     const df = c.createBiquadFilter(); df.type = 'lowpass'; df.frequency.value = 180;
     const dg = c.createGain(); dg.gain.value = 0.04;
     drone.connect(df); df.connect(dg); dg.connect(c.destination);
     drone.start();
 
+    // noise wash
     const bs = 2 * c.sampleRate;
     const nb = c.createBuffer(1, bs, c.sampleRate);
     const d = nb.getChannelData(0);
@@ -436,6 +458,7 @@ const Audio = {
     ns.connect(nf); nf.connect(ng); ng.connect(c.destination);
     ns.start();
 
+    // occasional eerie tones
     const eerieNotes = [220, 165, 277, 185, 146];
     let i = 0;
     const eerieLoop = () => {
@@ -532,10 +555,12 @@ const Effects = {
 const Level = {
   groundY: 540,
   platforms: [
+    // ground pieces with gaps
     { x: 0,    y: 540, w: 800,  h: 80 },
     { x: 900,  y: 540, w: 500,  h: 80 },
     { x: 1500, y: 540, w: 600,  h: 80 },
     { x: 2200, y: 540, w: 1400, h: 80 },
+    // mid and upper platforms
     { x: 250,  y: 420, w: 160, h: 14 },
     { x: 500,  y: 330, w: 160, h: 14 },
     { x: 750,  y: 240, w: 160, h: 14 },
@@ -551,13 +576,16 @@ const Level = {
   ]
 };
 
+// -------------------------------------------------------------
+// Rectangle overlap
+// -------------------------------------------------------------
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x &&
          a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 // -------------------------------------------------------------
-// Player
+// Player — responsive platforming
 // -------------------------------------------------------------
 const Player = {
   x: 80, y: 400, w: 32, h: 48,
@@ -591,10 +619,12 @@ const Player = {
     if (this.attackTimer > 0) this.attackTimer -= dt;
     if (this.hitFlash > 0) this.hitFlash -= dt;
 
+    // horizontal
     this.vx = 0;
     if (Input.down('arrowleft'))  { this.vx = -Config.moveSpeed; this.facing = -1; }
     if (Input.down('arrowright')) { this.vx = +Config.moveSpeed; this.facing = +1; }
 
+    // jump with coyote + buffer + variable height
     if (this.onGround) this.coyote = Config.coyoteTime;
     else this.coyote -= dt;
 
@@ -612,6 +642,7 @@ const Player = {
       this.jumpHold = 0;
     }
 
+    // attack
     if (Input.tap('z') && this.attackCooldown <= 0) {
       this.attackTimer = Config.attackDuration;
       this.attackCooldown = Config.attackCooldown;
@@ -619,12 +650,15 @@ const Player = {
       Combat.performAttack();
     }
 
+    // gravity
     this.vy += Config.gravity;
     if (this.vy > 17) this.vy = 17;
 
+    // integrate horizontal
     this.x += this.vx;
     this.x = Math.max(0, Math.min(Config.worldWidth - this.w, this.x));
 
+    // integrate vertical with platform landing
     this.y += this.vy;
     this.onGround = false;
     for (const p of Level.platforms) {
@@ -637,6 +671,7 @@ const Player = {
       }
     }
 
+    // death by fall
     if (this.y > H + 100) this.hit(30);
   },
 
@@ -645,6 +680,7 @@ const Player = {
     this.hp = Math.max(0, this.hp - dmg);
     this.invuln = Config.enemyContactCooldown;
     this.hitFlash = 0.25;
+    // knockback
     if (fromX !== undefined) this.vx = this.x < fromX ? -7 : 7;
     this.vy = -6;
     Audio.hurt();
@@ -662,30 +698,41 @@ const Player = {
   draw() {
     const sx = this.x - Camera.x + Camera.offsetX();
     const sy = this.y + Camera.offsetY();
+    // invuln blink
     if (this.invuln > 0 && Math.floor(this.invuln * 20) % 2 === 0) return;
+
+    // hit tint
     if (this.hitFlash > 0) ctx.filter = 'brightness(2.5)';
 
+    // legs
     ctx.fillStyle = '#2a3a5a';
     const walking = Math.abs(this.vx) > 0.1 && this.onGround;
     const swing = walking ? Math.sin(this.animT * 16) * 3 : 0;
     ctx.fillRect(sx + 6, sy + 30, 8, 18 - swing);
     ctx.fillRect(sx + 18, sy + 30, 8, 18 + swing);
+    // body
     ctx.fillStyle = '#4288dd';
     ctx.fillRect(sx + 4, sy + 14, 24, 20);
+    // belt
     ctx.fillStyle = '#5a3a1a';
     ctx.fillRect(sx + 4, sy + 30, 24, 3);
+    // head
     ctx.fillStyle = '#f2c69a';
     ctx.fillRect(sx + 6, sy, 20, 16);
+    // hair
     ctx.fillStyle = '#3a2412';
     ctx.fillRect(sx + 4, sy, 24, 6);
+    // eyes
     ctx.fillStyle = '#000';
     const ex = this.facing > 0 ? sx + 18 : sx + 8;
     ctx.fillRect(ex, sy + 8, 3, 3);
 
+    // arm + attack
     if (this.attackTimer > 0) {
       const box = this.attackBox();
       ctx.fillStyle = 'rgba(255,220,120,0.5)';
       ctx.fillRect(box.x - Camera.x, box.y, box.w, box.h);
+      // blade
       ctx.fillStyle = '#e0e4ee';
       if (this.facing > 0) ctx.fillRect(sx + this.w, sy + 18, 46, 6);
       else ctx.fillRect(sx - 46, sy + 18, 46, 6);
@@ -703,13 +750,13 @@ const Player = {
 };
 
 // -------------------------------------------------------------
-// Enemy, Combat, Stage, Renderer (원본 그대로) + 점수 상승 부분만 추가
+// Enemy — AI: patrol / chase / stare / aggression, death anim
 // -------------------------------------------------------------
 const Enemy = {
   image: null,
-  imageKeyed: null,
+  imageKeyed: null,  // background-removed version
   imageReady: false,
-  useDefault: true,
+  useDefault: true,  // use procedurally drawn default monster
 
   list: [],
 
@@ -717,6 +764,7 @@ const Enemy = {
     this.useDefault = false;
     this.image = img;
     this.imageReady = true;
+    // pre-key background
     const c = document.createElement('canvas');
     c.width = img.naturalWidth; c.height = img.naturalHeight;
     const cc = c.getContext('2d');
@@ -734,4 +782,981 @@ const Enemy = {
       cc.putImageData(id, 0, 0);
       const out = new Image(); out.src = c.toDataURL('image/png');
       this.imageKeyed = out;
-    } catch (e)
+    } catch (e) {}
+  },
+
+  spawn(x, y, hpMult = 1) {
+    this.list.push({
+      x, y, w: 48, h: 64,
+      vx: 0, vy: 0,
+      hp: Math.floor(40 * hpMult),
+      maxHp: Math.floor(40 * hpMult),
+      facing: -1,
+      onGround: false,
+      bob: Math.random() * 6,
+      // AI state
+      ai: 'PATROL',
+      aiTimer: 1 + Math.random() * 2,
+      patrolDir: Math.random() < 0.5 ? -1 : 1,
+      aggression: 0,        // 0..1 — how much player has been looking
+      starePose: 0,         // timer for stare animation
+      speedBoost: 0,        // short burst when player very close
+      // hit / death
+      hitFlash: 0,
+      dying: false,
+      dyingT: 0,
+      justHitCooldown: 0,
+    });
+  },
+
+  allDead() { return this.list.every(e => e.dying || e.hp <= 0); },
+
+  update(dt) {
+    for (const e of this.list) {
+      e.bob += dt;
+      if (e.hitFlash > 0) e.hitFlash -= dt;
+      if (e.justHitCooldown > 0) e.justHitCooldown -= dt;
+
+      // death animation
+      if (e.dying) {
+        e.dyingT += dt;
+        e.vy += Config.gravity * 0.6;
+        e.y += e.vy;
+        e.x += e.vx * 0.5;
+        e.vx *= 0.94;
+        continue;
+      }
+
+      // distance to player
+      const dx = (Player.x + Player.w / 2) - (e.x + e.w / 2);
+      const dy = (Player.y + Player.h / 2) - (e.y + e.h / 2);
+      const dist = Math.hypot(dx, dy);
+
+      // is player looking at this enemy? (enemy is on screen, player facing toward)
+      const onScreen = (e.x + e.w > Camera.x && e.x < Camera.x + W);
+      const lookingAt = onScreen && dist < 600 &&
+        ((Player.facing > 0 && dx > 0) || (Player.facing < 0 && dx < 0));
+
+      if (lookingAt) e.aggression = Math.min(1, e.aggression + dt * 0.2);
+      else e.aggression = Math.max(0, e.aggression - dt * 0.08);
+
+      // AI state machine
+      e.aiTimer -= dt;
+      const farDist = 280;
+      const closeDist = 150;
+
+      // Occasionally stare
+      if (e.ai === 'PATROL' && e.aiTimer <= 0 && Math.random() < 0.3) {
+        e.ai = 'STARE';
+        e.aiTimer = 0.8 + Math.random() * 1.0;
+        Audio.stare();
+      }
+
+      if (e.ai === 'STARE') {
+        // face player, don't move
+        e.vx = 0;
+        e.facing = dx < 0 ? -1 : 1;
+        e.starePose = 1;
+        if (e.aiTimer <= 0) {
+          e.ai = dist < farDist ? 'CHASE' : 'PATROL';
+          e.aiTimer = 1.5 + Math.random() * 2;
+        }
+      } else if (dist < farDist) {
+        // chase
+        e.ai = 'CHASE';
+        // base chase speed increases with aggression
+        const baseSpeed = 1.6 + e.aggression * 2.5;
+        // sudden burst when very close
+        if (dist < closeDist && e.speedBoost <= 0 && Math.random() < 0.02) {
+          e.speedBoost = 0.4;
+          Audio.stare();
+        }
+        if (e.speedBoost > 0) { e.speedBoost -= dt; }
+        const speed = baseSpeed + (e.speedBoost > 0 ? 3 : 0);
+        e.vx = Math.sign(dx) * speed;
+        e.facing = e.vx < 0 ? -1 : 1;
+      } else {
+        // patrol
+        e.ai = 'PATROL';
+        e.vx = e.patrolDir * 1.4;
+        e.facing = e.patrolDir;
+        if (e.aiTimer <= 0) {
+          e.patrolDir *= -1;
+          e.aiTimer = 2 + Math.random() * 3;
+        }
+      }
+
+      // physics
+      e.vy += Config.gravity;
+      if (e.vy > 16) e.vy = 16;
+      e.x += e.vx;
+      e.x = Math.max(0, Math.min(Config.worldWidth - e.w, e.x));
+      e.y += e.vy;
+      e.onGround = false;
+      let platformUnder = null;
+      for (const p of Level.platforms) {
+        if (e.vy >= 0 &&
+            e.x + e.w > p.x && e.x < p.x + p.w &&
+            e.y + e.h >= p.y && e.y + e.h <= p.y + Math.max(20, p.h)) {
+          e.y = p.y - e.h;
+          e.vy = 0;
+          e.onGround = true;
+          platformUnder = p;
+        }
+      }
+      // patrol turnaround at edges
+      if (e.ai === 'PATROL' && platformUnder) {
+        if (e.x < platformUnder.x + 4) { e.patrolDir = 1; }
+        if (e.x + e.w > platformUnder.x + platformUnder.w - 4) { e.patrolDir = -1; }
+      }
+
+      // contact damage
+      if (e.justHitCooldown <= 0 && rectsOverlap(e, Player)) {
+        Player.hit(Config.enemyContactDamage, e.x + e.w / 2);
+        e.justHitCooldown = 0.4;
+      }
+    }
+
+    // remove enemies that finished dying
+    this.list = this.list.filter(e => !(e.dying && e.dyingT > 1.2));
+  },
+
+  damage(e, dmg, fromFacing) {
+    e.hp -= dmg;
+    e.hitFlash = 0.15;
+    e.x += fromFacing * 18; // knockback
+    Audio.hit();
+    Camera.shakeNow(5);
+    const crit = Math.random() < 0.18;
+    Effects.spawnDamageNum(e.x + e.w / 2, e.y, crit ? Math.floor(dmg * 1.5) : dmg, crit);
+    if (e.hp <= 0 && !e.dying) {
+      e.dying = true;
+      e.dyingT = 0;
+      e.vy = -6;
+      e.vx = fromFacing * 3;
+      Audio.die();
+      Effects.spawnBurst(e.x + e.w / 2, e.y + e.h / 2, '#e8c547', 14);
+      Score.addKill(Stage.current, crit);
+      Stage.onEnemyKilled();
+    }
+  },
+
+  draw() {
+    for (const e of this.list) {
+      const sx = e.x - Camera.x + Camera.offsetX();
+      const sy = e.y + Camera.offsetY();
+      if (sx + e.w < -20 || sx > W + 20) continue;
+      const bob = Math.sin(e.bob * 3) * 2;
+      const shake = (e.ai === 'STARE' || e.aggression > 0.5) ? (Math.random() - 0.5) * 1.5 : 0;
+
+      ctx.save();
+
+      // fade out while dying
+      if (e.dying) ctx.globalAlpha = Math.max(0, 1 - e.dyingT / 1.2);
+
+      // hit flash
+      if (e.hitFlash > 0) ctx.filter = 'brightness(2.5)';
+
+      // red aura when aggression high
+      if (e.aggression > 0.4) {
+        const aura = ctx.createRadialGradient(
+          sx + e.w / 2, sy + e.h / 2, 10,
+          sx + e.w / 2, sy + e.h / 2, e.w * 1.3
+        );
+        aura.addColorStop(0, `rgba(180,0,0,${0.2 * e.aggression})`);
+        aura.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = aura;
+        ctx.fillRect(sx - e.w, sy - e.h, e.w * 3, e.h * 3);
+      }
+
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(sx + e.w / 2, sy + e.h, e.w * 0.45, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (this.imageReady && !this.useDefault) {
+        const src = this.imageKeyed && this.imageKeyed.complete ? this.imageKeyed : this.image;
+        ctx.translate(sx + e.w / 2 + shake, sy + bob + shake);
+        ctx.scale(e.facing < 0 ? -1 : 1, 1);
+        if (e.dying) ctx.rotate((e.facing < 0 ? 1 : -1) * e.dyingT * 1.5);
+        const ar = src.width / src.height;
+        const h = e.h;
+        const w = h * ar;
+        ctx.drawImage(src, -w / 2, 0, w, h);
+      } else {
+        // Built-in default monster — a creepy pale humanoid
+        ctx.translate(sx + e.w / 2 + shake, sy + bob + shake);
+        ctx.scale(e.facing < 0 ? -1 : 1, 1);
+        if (e.dying) ctx.rotate((e.facing < 0 ? 1 : -1) * e.dyingT * 1.5);
+        drawDefaultMonster(e);
+      }
+
+      ctx.restore();
+      ctx.filter = 'none';
+      ctx.globalAlpha = 1;
+
+      // hp bar
+      if (!e.dying && e.hp < e.maxHp) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(sx, sy - 8, e.w, 4);
+        ctx.fillStyle = '#ff5050';
+        ctx.fillRect(sx + 1, sy - 7, (e.w - 2) * (e.hp / e.maxHp), 2);
+      }
+    }
+  }
+};
+
+// -------------------------------------------------------------
+// Combat
+// -------------------------------------------------------------
+const Combat = {
+  performAttack() {
+    const box = Player.attackBox();
+    for (const e of Enemy.list) {
+      if (e.dying) continue;
+      if (rectsOverlap(box, e)) {
+        const crit = Math.random() < 0.2;
+        Enemy.damage(e, crit ? Math.floor(Config.attackDamage * 1.5) : Config.attackDamage, Player.facing);
+      }
+    }
+  }
+};
+
+// -------------------------------------------------------------
+// Stage — spawning waves, progression
+// -------------------------------------------------------------
+const Stage = {
+  current: 1,
+  targetKills: 5,
+  kills: 0,
+  hpMult: 1,
+
+  start(n) {
+    this.current = n;
+    this.hpMult = 1 + (n - 1) * 0.35;
+    this.targetKills = 4 + n;
+    this.kills = 0;
+    Enemy.list.length = 0;
+    // spawn positions across the stage
+    const positions = [
+      [500, 420], [800, 420], [1200, 420], [1600, 420],
+      [2000, 420], [2400, 420], [2800, 420], [3200, 420],
+      [520, 300], [1020, 380], [1870, 340], [2420, 360],
+    ];
+    const numSpawn = Math.min(positions.length, this.targetKills + 2);
+    for (let i = 0; i < numSpawn; i++) {
+      Enemy.spawn(positions[i][0], positions[i][1], this.hpMult);
+    }
+    updateHUD();
+  },
+  onEnemyKilled() {
+    this.kills++;
+    updateHUD();
+    if (this.kills >= this.targetKills) {
+      setTimeout(() => Game.stageClear(), 800);
+    }
+  }
+};
+
+// -------------------------------------------------------------
+// Renderer
+// -------------------------------------------------------------
+const Renderer = {
+  draw() {
+    // sky gradient (darker at higher stages)
+    const nightAmt = Math.min(1, (Stage.current - 1) * 0.25);
+    const topC = lerpColor('#7ec8e8', '#1a1830', nightAmt);
+    const botC = lerpColor('#c7e8c0', '#2a2530', nightAmt);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, topC);
+    g.addColorStop(1, botC);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // moon (appears in later stages)
+    if (nightAmt > 0.2) {
+      ctx.fillStyle = `rgba(255,255,220,${nightAmt})`;
+      ctx.beginPath(); ctx.arc(W - 140, 100, 36, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // far hills (parallax x0.15)
+    ctx.fillStyle = lerpColor('#8fb08a', '#2a3a2a', nightAmt);
+    const par1 = Camera.x * 0.15;
+    for (let i = -1; i < Math.ceil(W / 400) + 2; i++) {
+      const hx = i * 400 - (par1 % 400);
+      ctx.beginPath();
+      ctx.moveTo(hx, H);
+      ctx.quadraticCurveTo(hx + 200, H - 240, hx + 400, H);
+      ctx.fill();
+    }
+    // mid hills (parallax x0.3)
+    ctx.fillStyle = lerpColor('#6f9a6b', '#1c2a1c', nightAmt);
+    const par2 = Camera.x * 0.3;
+    for (let i = -1; i < Math.ceil(W / 280) + 2; i++) {
+      const hx = i * 280 - (par2 % 280);
+      ctx.beginPath();
+      ctx.moveTo(hx, H);
+      ctx.quadraticCurveTo(hx + 140, H - 180, hx + 280, H);
+      ctx.fill();
+    }
+    // clouds (parallax x0.08)
+    ctx.fillStyle = `rgba(255,255,255,${0.8 - nightAmt * 0.6})`;
+    const par3 = Camera.x * 0.08;
+    for (let i = 0; i < 10; i++) {
+      const x = ((i * 400 - par3) % (W + 400)) - 100;
+      const y = 50 + (i * 41) % 120;
+      drawCloud(x, y, 28 + (i * 7) % 22);
+    }
+
+    // platforms
+    for (const p of Level.platforms) {
+      const sx = p.x - Camera.x + Camera.offsetX();
+      const sy = p.y + Camera.offsetY();
+      if (sx + p.w < 0 || sx > W) continue;
+      ctx.fillStyle = lerpColor('#6ac46a', '#2e4a2e', nightAmt);
+      ctx.fillRect(sx, sy, p.w, 6);
+      ctx.fillStyle = lerpColor('#8b5a2b', '#3a2816', nightAmt);
+      ctx.fillRect(sx, sy + 6, p.w, p.h - 6);
+      // grass tufts
+      ctx.fillStyle = lerpColor('#4ea04e', '#1a2a1a', nightAmt);
+      for (let i = 8; i < p.w - 8; i += 24) {
+        ctx.fillRect(sx + i, sy - 3, 2, 4);
+        ctx.fillRect(sx + i + 2, sy - 2, 2, 3);
+      }
+    }
+
+    Enemy.draw();
+    Player.draw();
+    Effects.draw();
+  }
+};
+
+// Built-in creepy monster — original canvas drawing (no external asset)
+function drawDefaultMonster(e) {
+  const w = e.w, h = e.h;
+  const agg = e.aggression || 0;
+
+  // torso (tattered robe)
+  const robeGrad = ctx.createLinearGradient(0, 0, 0, h);
+  robeGrad.addColorStop(0, '#2a2432');
+  robeGrad.addColorStop(1, '#0e0c14');
+  ctx.fillStyle = robeGrad;
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.35, h * 0.45);
+  ctx.lineTo(-w * 0.5, h);
+  ctx.lineTo(-w * 0.35, h * 0.95);
+  ctx.lineTo(-w * 0.2, h);
+  ctx.lineTo(-w * 0.05, h * 0.95);
+  ctx.lineTo(w * 0.1, h);
+  ctx.lineTo(w * 0.3, h * 0.95);
+  ctx.lineTo(w * 0.5, h);
+  ctx.lineTo(w * 0.35, h * 0.45);
+  ctx.closePath();
+  ctx.fill();
+
+  // skinny arms
+  ctx.strokeStyle = '#d8cfae';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  // left arm dangling
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.3, h * 0.5);
+  ctx.quadraticCurveTo(-w * 0.55, h * 0.65, -w * 0.45, h * 0.85);
+  ctx.stroke();
+  // right arm — stretches toward player when aggressive
+  ctx.beginPath();
+  ctx.moveTo(w * 0.3, h * 0.5);
+  const reach = 0.55 + agg * 0.25;
+  ctx.quadraticCurveTo(w * reach, h * 0.55, w * (reach + 0.1), h * (0.75 - agg * 0.15));
+  ctx.stroke();
+  // bony fingers on the stretching hand
+  ctx.lineWidth = 2;
+  const hx = w * (reach + 0.1), hy = h * (0.75 - agg * 0.15);
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(hx + (2 + i) * 1.5, hy + (i - 1) * 3 + 4);
+    ctx.stroke();
+  }
+
+  // neck
+  ctx.fillStyle = '#d8cfae';
+  ctx.fillRect(-w * 0.08, h * 0.3, w * 0.16, h * 0.12);
+
+  // head — elongated oval
+  const headGrad = ctx.createRadialGradient(-w * 0.1, h * 0.12, w * 0.05, 0, h * 0.2, w * 0.5);
+  headGrad.addColorStop(0, '#ece3c2');
+  headGrad.addColorStop(0.7, '#c2b896');
+  headGrad.addColorStop(1, '#7a6e52');
+  ctx.fillStyle = headGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, h * 0.2, w * 0.32, h * 0.25, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // dark hollow eye sockets
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(-w * 0.12, h * 0.18, w * 0.08, h * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(w * 0.12, h * 0.18, w * 0.08, h * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // glowing pupils — intensify with aggression
+  const glow = agg > 0.3 ? `rgba(255,${Math.floor(80 - agg * 60)},${Math.floor(80 - agg * 70)},1)` : '#3a2a2a';
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(-w * 0.12, h * 0.19, w * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(w * 0.12, h * 0.19, w * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+
+  // wide crescent smile — gets wider with aggression
+  const smileW = w * (0.22 + agg * 0.08);
+  const smileY = h * 0.28;
+  ctx.strokeStyle = '#2a1010';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-smileW, smileY);
+  ctx.quadraticCurveTo(0, smileY + h * (0.06 + agg * 0.04), smileW, smileY);
+  ctx.stroke();
+  // dark mouth interior
+  ctx.fillStyle = '#100808';
+  ctx.beginPath();
+  ctx.moveTo(-smileW + 1, smileY + 1);
+  ctx.quadraticCurveTo(0, smileY + h * (0.06 + agg * 0.04), smileW - 1, smileY + 1);
+  ctx.quadraticCurveTo(0, smileY + h * (0.03 + agg * 0.03), -smileW + 1, smileY + 1);
+  ctx.fill();
+  // jagged teeth
+  ctx.fillStyle = '#e8e2c8';
+  const teethN = 5;
+  for (let i = 0; i < teethN; i++) {
+    const tx = -smileW + (i + 0.5) * (smileW * 2 / teethN);
+    const th = 2 + (i % 2) * 2;
+    ctx.fillRect(tx - 1, smileY + 1, 2, th);
+  }
+
+  // ragged hair / shroud on top
+  ctx.fillStyle = '#1a1420';
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.3, h * 0.08);
+  ctx.quadraticCurveTo(-w * 0.2, -h * 0.05, 0, -h * 0.03);
+  ctx.quadraticCurveTo(w * 0.2, -h * 0.05, w * 0.3, h * 0.08);
+  ctx.quadraticCurveTo(w * 0.15, h * 0.02, 0, h * 0.04);
+  ctx.quadraticCurveTo(-w * 0.15, h * 0.02, -w * 0.3, h * 0.08);
+  ctx.fill();
+  // stray hair strands
+  for (let i = -3; i <= 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * w * 0.07, h * 0.02);
+    ctx.lineTo(i * w * 0.07 + (Math.random() - 0.5) * 3, -h * 0.08 - Math.abs(i) * 2);
+    ctx.strokeStyle = '#1a1420';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+}
+
+function drawCloud(x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.arc(x + r * 0.8, y + r * 0.2, r * 0.75, 0, Math.PI * 2);
+  ctx.arc(x - r * 0.7, y + r * 0.1, r * 0.65, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function lerpColor(c1, c2, t) {
+  const p1 = hexToRgb(c1), p2 = hexToRgb(c2);
+  const r = Math.floor(p1.r + (p2.r - p1.r) * t);
+  const g = Math.floor(p1.g + (p2.g - p1.g) * t);
+  const b = Math.floor(p1.b + (p2.b - p1.b) * t);
+  return `rgb(${r},${g},${b})`;
+}
+function hexToRgb(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+// -------------------------------------------------------------
+// HUD / UI
+// -------------------------------------------------------------
+const hudEl = document.getElementById('hud');
+const hpFillEl = document.getElementById('hpFill');
+const stageInfoEl = document.getElementById('stageInfo');
+const killCountEl = document.getElementById('killCount');
+const hudNameEl  = document.getElementById('hudName');
+const hudScoreEl = document.getElementById('hudScore');
+const tintEl = document.getElementById('tint');
+const overlayEl = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlayTitle');
+const overlaySub = document.getElementById('overlaySub');
+const overlayBody = document.getElementById('overlayBody');
+const overlayControls = document.getElementById('overlayControls');
+const actionBtn = document.getElementById('actionBtn');
+const startDrop = document.getElementById('startDrop');
+const startFile = document.getElementById('startFile');
+const preview = document.getElementById('preview');
+const previewWrap = document.getElementById('previewWrap');
+const uploadPanel = document.getElementById('uploadPanel');
+const monsterFile = document.getElementById('monsterFile');
+const nameInputEl = document.getElementById('nameInput');
+const nameRowEl   = document.getElementById('nameRow');
+const leaderboardEl = document.getElementById('leaderboard');
+const leaderboardBody = document.getElementById('leaderboardBody');
+const rankPopupEl = document.getElementById('rankPopup');
+
+// -------------------------------------------------------------
+// Score
+// -------------------------------------------------------------
+const Score = {
+  current: 0,
+  reset() { this.current = 0; updateHUD(); },
+  addKill(stage, crit) {
+    const pts = Math.floor((crit ? 150 : 100) * stage);
+    this.current += pts;
+    Effects.spawnDamageNum(Player.x + Player.w / 2, Player.y - 28, `+${pts}`, false);
+    updateHUD();
+  },
+  addStageBonus(stage) {
+    const pts = 500 * stage;
+    this.current += pts;
+    updateHUD();
+    return pts;
+  }
+};
+
+// -------------------------------------------------------------
+// Leaderboard — localStorage persisted Top-N
+// -------------------------------------------------------------
+const Leaderboard = {
+  KEY: 'junoFlowLeaderboard',
+  USER_KEY: 'junoFlowUsername',
+  MAX: 50,
+  entries: [],
+
+  load() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      this.entries = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(this.entries)) this.entries = [];
+    } catch (_) { this.entries = []; }
+  },
+  save() {
+    try { localStorage.setItem(this.KEY, JSON.stringify(this.entries)); } catch (_) {}
+  },
+  loadUsername() {
+    try { return localStorage.getItem(this.USER_KEY) || ''; } catch (_) { return ''; }
+  },
+  saveUsername(name) {
+    try { localStorage.setItem(this.USER_KEY, name); } catch (_) {}
+  },
+  submit(name, score, stage, kills) {
+    const entry = { name: name.slice(0, 16), score, stage, kills, date: Date.now() };
+    this.entries.push(entry);
+    this.entries.sort((a, b) => b.score - a.score || b.stage - a.stage);
+    this.entries = this.entries.slice(0, this.MAX);
+    this.save();
+    return this.entries.indexOf(entry) + 1; // 1-based rank (0 if pushed out)
+  },
+  render(highlightName) {
+    if (!leaderboardBody) return;
+    leaderboardBody.innerHTML = '';
+    const top = this.entries.slice(0, 10);
+    if (top.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="4" class="empty">아직 기록이 없습니다. 첫 번째 랭커가 되어보세요.</td>';
+      leaderboardBody.appendChild(tr);
+      return;
+    }
+    top.forEach((e, i) => {
+      const tr = document.createElement('tr');
+      if (i === 0) tr.classList.add('top1');
+      else if (i === 1) tr.classList.add('top2');
+      else if (i === 2) tr.classList.add('top3');
+      if (highlightName && e.name === highlightName) tr.classList.add('you');
+      tr.innerHTML =
+        `<td><span class="rank">${i + 1}</span></td>` +
+        `<td>${escapeHTML(e.name)}</td>` +
+        `<td class="right">${e.score.toLocaleString()}</td>` +
+        `<td class="right">S${e.stage}</td>`;
+      leaderboardBody.appendChild(tr);
+    });
+  }
+};
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+// Current session state
+const Session = {
+  username: '',
+  setUsername(name) {
+    this.username = (name || '').trim().slice(0, 16);
+    hudNameEl.textContent = this.username || 'Player';
+    Leaderboard.saveUsername(this.username);
+  }
+};
+
+function updateHUD() {
+  hpFillEl.style.width = (Player.hp / Player.maxHp * 100) + '%';
+  stageInfoEl.textContent = `STAGE ${Stage.current}`;
+  killCountEl.textContent = `Kills: ${Stage.kills} / ${Stage.targetKills}`;
+  hudScoreEl.textContent = `Score: ${Score.current.toLocaleString()}`;
+}
+
+function updateTint() {
+  // tint based on nearest enemy proximity
+  let minDist = Infinity;
+  for (const e of Enemy.list) {
+    if (e.dying) continue;
+    const dx = Player.x - e.x;
+    const dy = Player.y - e.y;
+    const d = Math.hypot(dx, dy);
+    if (d < minDist) minDist = d;
+  }
+  const prox = Math.max(0, Math.min(1, 1 - minDist / 400));
+  tintEl.style.background = `radial-gradient(circle at center, rgba(0,0,0,0) 30%, rgba(80,0,0,${prox * 0.45}) 100%)`;
+}
+
+// -------------------------------------------------------------
+// Image upload (both on start screen and HUD panel)
+// -------------------------------------------------------------
+function loadImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      Enemy.setImage(img);
+      preview.src = e.target.result;
+      previewWrap.classList.add('show');
+      startDrop.classList.add('ok');
+      uploadPanel.classList.add('ok');
+      actionBtn.disabled = false;
+      startDrop.querySelector('div:first-child').textContent = '✓ 준비됨';
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+startFile.addEventListener('change', e => { if (e.target.files[0]) loadImageFile(e.target.files[0]); });
+monsterFile.addEventListener('change', e => { if (e.target.files[0]) loadImageFile(e.target.files[0]); });
+['dragenter','dragover'].forEach(ev => startDrop.addEventListener(ev, e => { e.preventDefault(); startDrop.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => startDrop.addEventListener(ev, e => { e.preventDefault(); startDrop.classList.remove('drag'); }));
+startDrop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]); });
+window.addEventListener('paste', e => {
+  if (!e.clipboardData || Game.state === 'playing') return;
+  for (const item of e.clipboardData.items) {
+    if (item.type.startsWith('image/')) { loadImageFile(item.getAsFile()); break; }
+  }
+});
+
+// -------------------------------------------------------------
+// Game — state machine + loop
+// -------------------------------------------------------------
+const Game = {
+  state: 'start',     // 'start' | 'playing' | 'gameover' | 'stageclear'
+  lastT: 0,
+
+  showOverlay(title, sub, body, btnText) {
+    overlayTitle.textContent = title;
+    overlaySub.textContent = sub;
+    overlayBody.innerHTML = body;
+    actionBtn.textContent = btnText;
+    overlayEl.classList.remove('hidden');
+    hudEl.style.display = 'none';
+    uploadPanel.style.display = 'none';
+  },
+
+  hideOverlay() {
+    overlayEl.classList.add('hidden');
+    hudEl.style.display = '';
+    uploadPanel.style.display = '';
+    rankPopupEl.textContent = '';
+  },
+
+  _ensureUsername() {
+    const v = nameInputEl.value.trim();
+    if (!v) {
+      nameInputEl.focus();
+      nameInputEl.style.borderColor = '#ff6464';
+      setTimeout(() => { nameInputEl.style.borderColor = ''; }, 1200);
+      return false;
+    }
+    Session.setUsername(v);
+    return true;
+  },
+
+  beginPlay() {
+    Audio.startMusic();
+    Score.reset();
+    Player.reset();
+    Stage.start(1);
+    this.state = 'playing';
+    this.hideOverlay();
+    overlayControls.style.display = 'none';
+    startDrop.style.display = 'none';
+    previewWrap.style.display = 'none';
+    nameRowEl.style.display = 'none';
+    leaderboardEl.style.display = 'none';
+  },
+
+  gameOver() {
+    this.state = 'gameover';
+    // submit score
+    const rank = Session.username
+      ? Leaderboard.submit(Session.username, Score.current, Stage.current, Stage.kills)
+      : 0;
+    const rankMsg = rank > 0
+      ? `🏆 이번 기록: <b style="color:#ffd24a">${rank}위</b> — ${Score.current.toLocaleString()}점`
+      : `이번 기록: ${Score.current.toLocaleString()}점 (TOP ${Leaderboard.MAX} 진입 실패)`;
+    this.showOverlay(
+      'GAME OVER', '패 배',
+      `Stage ${Stage.current} · ${Stage.kills} kills<br>${rankMsg}`,
+      '다 시 시 작'
+    );
+    Leaderboard.render(Session.username);
+    leaderboardEl.style.display = '';
+    rankPopupEl.textContent = rank > 0 && rank <= 3 ? `NEW ${rank === 1 ? 'CHAMPION' : 'TOP ' + rank} !` : '';
+    startDrop.style.display = 'none';
+    previewWrap.style.display = 'none';
+    overlayControls.style.display = 'none';
+    nameRowEl.style.display = 'none';
+    actionBtn.disabled = false;
+  },
+
+  stageClear() {
+    this.state = 'stageclear';
+    const bonus = Score.addStageBonus(Stage.current);
+    this.showOverlay(
+      `STAGE ${Stage.current} CLEAR`, '통 과',
+      `HP가 회복됩니다. 다음 스테이지는 더 강한 몬스터가 나옵니다.<br>` +
+      `클리어 보너스 <b style="color:#ffd24a">+${bonus.toLocaleString()}</b> 점 · 현재 점수 <b>${Score.current.toLocaleString()}</b>`,
+      '다 음 스 테 이 지'
+    );
+    Player.hp = Player.maxHp;
+    startDrop.style.display = 'none';
+    previewWrap.style.display = 'none';
+    overlayControls.style.display = 'none';
+    nameRowEl.style.display = 'none';
+    leaderboardEl.style.display = 'none';
+    actionBtn.disabled = false;
+  },
+
+  onActionButton() {
+    if (this.state === 'start') {
+      if (!this._ensureUsername()) return;
+      this.beginPlay();
+    }
+    else if (this.state === 'gameover') {
+      Stage.current = 1;
+      Score.reset();
+      Player.reset();
+      this.beginPlay();
+    } else if (this.state === 'stageclear') {
+      Stage.start(Stage.current + 1);
+      Player.reset();
+      this.state = 'playing';
+      this.hideOverlay();
+    }
+  },
+
+  frame(t) {
+    const dt = Math.min(0.033, (t - this.lastT) / 1000 || 0.016);
+    this.lastT = t;
+
+    if (this.state === 'playing') {
+      Input.update(dt);
+      Player.update(dt);
+      Enemy.update(dt);
+      Effects.update(dt);
+      Camera.update();
+      updateHUD();
+      updateTint();
+    }
+
+    Renderer.draw();
+    requestAnimationFrame(this.frame.bind(this));
+  }
+};
+
+actionBtn.addEventListener('click', () => Game.onActionButton());
+window.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !actionBtn.disabled && overlayEl.classList.contains('hidden') === false) {
+    // don't submit when typing in name field unless focused
+    if (document.activeElement === nameInputEl && Game.state === 'start') {
+      Game.onActionButton();
+    } else if (document.activeElement !== nameInputEl) {
+      Game.onActionButton();
+    }
+  }
+});
+
+// -------------------------------------------------------------
+// Leaderboard bootstrap
+// -------------------------------------------------------------
+Leaderboard.load();
+Leaderboard.render();
+(function bootstrapUsername() {
+  const saved = Leaderboard.loadUsername();
+  if (saved) {
+    nameInputEl.value = saved;
+    Session.setUsername(saved);
+  } else {
+    hudNameEl.textContent = 'Player';
+  }
+})();
+nameInputEl.addEventListener('input', () => {
+  // live save as the user types
+  Session.setUsername(nameInputEl.value);
+  Leaderboard.render(Session.username);
+});
+
+// -------------------------------------------------------------
+// Mobile touch controls
+// -------------------------------------------------------------
+(function setupTouchControls() {
+  const touchEl = document.getElementById('touchControls');
+  const isTouchDevice = ('ontouchstart' in window) ||
+    (navigator.maxTouchPoints > 0) ||
+    (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
+  // action -> key used by Input
+  const keyMap = {
+    left:   'arrowleft',
+    right:  'arrowright',
+    jump:   ' ',
+    attack: 'z'
+  };
+
+  function press(action) {
+    const k = keyMap[action];
+    if (!Input.held[k]) Input.pressed[k] = true;
+    if (k === ' ' && !Input.held[k]) Input.jumpBuffer = Config.jumpBufferTime;
+    Input.held[k] = true;
+    // unlock audio on first user gesture (iOS / mobile browsers)
+    try { Audio._ctx().resume && Audio._ctx().resume(); } catch (_) {}
+  }
+  function release(action) {
+    const k = keyMap[action];
+    Input.held[k] = false;
+  }
+
+  // Track which touch id is bound to which button, so finger sliding works
+  const touchToBtn = new Map();
+
+  function bindBtn(btn) {
+    const action = btn.dataset.action;
+
+    const onStart = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      btn.classList.add('active');
+      press(action);
+      if (e.changedTouches) {
+        for (const t of e.changedTouches) touchToBtn.set(t.identifier, { btn, action });
+      }
+    };
+    const onEnd = (e) => {
+      e.preventDefault();
+      btn.classList.remove('active');
+      release(action);
+      if (e.changedTouches) {
+        for (const t of e.changedTouches) touchToBtn.delete(t.identifier);
+      }
+    };
+
+    btn.addEventListener('touchstart',  onStart, { passive: false });
+    btn.addEventListener('touchend',    onEnd,   { passive: false });
+    btn.addEventListener('touchcancel', onEnd,   { passive: false });
+
+    // mouse fallback (desktop debugging)
+    btn.addEventListener('mousedown',  (e) => { e.preventDefault(); btn.classList.add('active');  press(action); });
+    btn.addEventListener('mouseup',    (e) => { e.preventDefault(); btn.classList.remove('active'); release(action); });
+    btn.addEventListener('mouseleave', ()  => { btn.classList.remove('active'); release(action); });
+
+    // prevent context menu on long-press
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+  }
+
+  document.querySelectorAll('#touchControls .touch-btn').forEach(bindBtn);
+
+  // If finger slides off a button without firing touchend on it,
+  // a global touchmove handler catches that and releases.
+  document.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      const rec = touchToBtn.get(t.identifier);
+      if (!rec) continue;
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      if (el !== rec.btn && !rec.btn.contains(el)) {
+        rec.btn.classList.remove('active');
+        release(rec.action);
+        touchToBtn.delete(t.identifier);
+      }
+    }
+  }, { passive: true });
+
+  // Prevent iOS rubber-band scroll / pinch-zoom on the game itself
+  document.addEventListener('touchmove', (e) => {
+    if (e.target === canvas) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  document.addEventListener('dblclick',     e => e.preventDefault());
+
+  // Show controls when on a touch device, hide on the start/overlay screens
+  function updateVisibility() {
+    const playing = Game.state === 'playing';
+    if (isTouchDevice && playing) touchEl.classList.add('on');
+    else                          touchEl.classList.remove('on');
+  }
+  Game._updateTouchVisibility = updateVisibility;
+  updateVisibility();
+
+  // Release all held touch keys when leaving play (e.g. game over)
+  Game._releaseAllTouchKeys = () => {
+    Object.values(keyMap).forEach(k => { Input.held[k] = false; });
+    document.querySelectorAll('#touchControls .touch-btn.active')
+      .forEach(b => b.classList.remove('active'));
+    touchToBtn.clear();
+  };
+})();
+
+// Hook touch-visibility into existing state transitions
+(function wireTouchStateHooks() {
+  const _begin = Game.beginPlay.bind(Game);
+  Game.beginPlay = function () {
+    _begin();
+    if (Game._updateTouchVisibility) Game._updateTouchVisibility();
+  };
+  const _over = Game.gameOver.bind(Game);
+  Game.gameOver = function () {
+    if (Game._releaseAllTouchKeys) Game._releaseAllTouchKeys();
+    _over();
+    if (Game._updateTouchVisibility) Game._updateTouchVisibility();
+  };
+  const _clear = Game.stageClear.bind(Game);
+  Game.stageClear = function () {
+    if (Game._releaseAllTouchKeys) Game._releaseAllTouchKeys();
+    _clear();
+    if (Game._updateTouchVisibility) Game._updateTouchVisibility();
+  };
+  const _hide = Game.hideOverlay.bind(Game);
+  Game.hideOverlay = function () {
+    _hide();
+    if (Game._updateTouchVisibility) Game._updateTouchVisibility();
+  };
+  const _show = Game.showOverlay.bind(Game);
+  Game.showOverlay = function (a, b, c, d) {
+    _show(a, b, c, d);
+    if (Game._updateTouchVisibility) Game._updateTouchVisibility();
+  };
+})();
+
+// start the render loop (state begins as 'start' — shows menu)
+requestAnimationFrame(Game.frame.bind(Game));
+</script>
+</body>
+</html>
