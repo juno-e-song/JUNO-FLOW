@@ -11,7 +11,11 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #111; font-family: sans-serif; }
-  #game { display: block; width: 100vw; height: 100vh; background: #000; }
+  #game {
+    display: block; background: #000;
+    width: 100vw; height: 100vh;
+    width: 100dvw; height: 100dvh;
+  }
 
   /* HUD */
   #hud {
@@ -243,9 +247,17 @@
     #startDrop { margin-top: 6px; padding: 6px 12px; }
   }
 
-  /* Prevent iOS double-tap zoom / scroll while playing */
-  html, body { touch-action: none; overscroll-behavior: none; }
-  #game { touch-action: none; }
+  /* iOS fixes — don't put touch-action:none on html/body (breaks button taps in iOS Safari) */
+  html, body {
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    /* Use dynamic viewport units so URL bar hide/show doesn't clip us */
+    height: 100dvh; min-height: 100dvh;
+  }
+  #game { touch-action: none; -webkit-touch-callout: none; }
+  #overlay, #overlay button, #actionBtn { touch-action: manipulation; }
+  #nameInput { -webkit-user-select: text; user-select: text; }
 </style>
 </head>
 <body>
@@ -287,7 +299,7 @@
 
   <div id="nameRow">
     <span>닉네임</span>
-    <input id="nameInput" type="text" maxlength="16" placeholder="예: shadow-juno" autocomplete="off" spellcheck="false">
+    <input id="nameInput" type="text" maxlength="16" placeholder="예: shadow-juno" autocomplete="off" spellcheck="false" inputmode="text" enterkeyhint="go" autocapitalize="off">
   </div>
 
   <label id="startDrop">
@@ -396,13 +408,20 @@ const Input = {
   jumpBuffer: 0,
   init() {
     window.addEventListener('keydown', e => {
+      // don't hijack typing in text inputs
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       const k = e.key.toLowerCase();
       if ([' ','arrowleft','arrowright','arrowup','arrowdown','z'].includes(k)) e.preventDefault();
       if (!this.held[k]) this.pressed[k] = true;
       if (k === ' ' && !this.held[k]) this.jumpBuffer = Config.jumpBufferTime;
       this.held[k] = true;
     });
-    window.addEventListener('keyup', e => { this.held[e.key.toLowerCase()] = false; });
+    window.addEventListener('keyup', e => {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      this.held[e.key.toLowerCase()] = false;
+    });
   },
   update(dt) { if (this.jumpBuffer > 0) this.jumpBuffer -= dt; },
   down(k)     { return !!this.held[k.toLowerCase()]; },
@@ -1631,6 +1650,28 @@ nameInputEl.addEventListener('input', () => {
   // live save as the user types
   Session.setUsername(nameInputEl.value);
   Leaderboard.render(Session.username);
+});
+// iOS: submit on virtual keyboard "Go" / Enter
+nameInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    nameInputEl.blur();
+    if (Game.state === 'start') Game.onActionButton();
+  }
+});
+// iOS: tapping the start button while keyboard is up normally just dismisses
+// the keyboard and eats the click. Fix by blurring the input on touchstart
+// anywhere outside the input itself, so the click lands on the button.
+document.addEventListener('touchstart', (e) => {
+  if (document.activeElement === nameInputEl && e.target !== nameInputEl) {
+    nameInputEl.blur();
+  }
+}, { passive: true });
+// Also let the start button force-dismiss the keyboard before its own click fires
+['touchstart', 'pointerdown'].forEach(evt => {
+  actionBtn.addEventListener(evt, () => {
+    if (document.activeElement === nameInputEl) nameInputEl.blur();
+  }, { passive: true });
 });
 
 // -------------------------------------------------------------
