@@ -1373,27 +1373,58 @@ const REMOTE = {
   API_KEY: '$2a$10$pZS16G2nnMeCzkQXIvEx5OHSBHM4mro/fgW9ZP0DTNRWEASoiJYd6',
 
   _base() { return `https://api.jsonbin.io/v3/b/${this.BIN_ID}`; },
-  _headers() { return { 'Content-Type': 'application/json', 'X-Master-Key': this.API_KEY }; },
+  _headers() { return { 'Content-Type': 'application/json', 'X-Master-Key': this.API_KEY, 'X-Bin-Meta': 'false' }; },
+  _withTimeout(ms) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
+    return { signal: ctrl.signal, done: () => clearTimeout(t) };
+  },
 
   async fetch() {
     if (!this.enabled) return null;
+    const to = this._withTimeout(8000);
     try {
-      const res = await window.fetch(this._base() + '/latest', { headers: this._headers() });
-      if (!res.ok) return null;
+      const res = await window.fetch(this._base() + '/latest', { headers: this._headers(), signal: to.signal });
+      to.done();
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        console.warn('[JUNO FLOW] JSONBin GET not ok:', res.status, txt.slice(0, 200));
+        return null;
+      }
       const j = await res.json();
-      const list = (j && j.record && j.record.leaderboard) || [];
+      // with X-Bin-Meta: false, response IS the record directly
+      // without it, it's { record, metadata }
+      const record = (j && j.record) ? j.record : j;
+      const list = (record && Array.isArray(record.leaderboard)) ? record.leaderboard :
+                   (Array.isArray(record) ? record : []);
       return Array.isArray(list) ? list : [];
-    } catch (_) { return null; }
+    } catch (e) {
+      to.done();
+      console.warn('[JUNO FLOW] JSONBin GET error:', e && (e.name + ': ' + e.message));
+      return null;
+    }
   },
   async push(entries) {
     if (!this.enabled) return false;
+    const to = this._withTimeout(8000);
     try {
       const res = await window.fetch(this._base(), {
         method: 'PUT', headers: this._headers(),
-        body: JSON.stringify({ leaderboard: entries })
+        body: JSON.stringify({ leaderboard: entries }),
+        signal: to.signal
       });
-      return res.ok;
-    } catch (_) { return false; }
+      to.done();
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        console.warn('[JUNO FLOW] JSONBin PUT not ok:', res.status, txt.slice(0, 200));
+        return false;
+      }
+      return true;
+    } catch (e) {
+      to.done();
+      console.warn('[JUNO FLOW] JSONBin PUT error:', e && (e.name + ': ' + e.message));
+      return false;
+    }
   }
 };
 
